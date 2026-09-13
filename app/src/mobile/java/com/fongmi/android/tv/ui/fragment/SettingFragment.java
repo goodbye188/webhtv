@@ -33,6 +33,7 @@ import com.fongmi.android.tv.ui.dialog.ChoiceDialog;
 import com.fongmi.android.tv.ui.dialog.ConfigDialog;
 import com.fongmi.android.tv.ui.dialog.HistoryDialog;
 import com.fongmi.android.tv.ui.dialog.LiveDialog;
+import com.fongmi.android.tv.ui.dialog.MihomoSourceDialog;
 import com.fongmi.android.tv.ui.dialog.RestoreDialog;
 import com.fongmi.android.tv.ui.dialog.BackupProgressDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
@@ -90,6 +91,11 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.versionText.setText(AppVersion.fullName());
         setOtherText();
         setCacheText();
+        setMihomoText();
+    }
+
+    private void setMihomoText() {
+        mBinding.mihomoText.setText(MihomoManager.statusText(getRoot().getApplicationContext()));
     }
 
     private void setOtherText() {
@@ -117,6 +123,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.backup.setOnClickListener(this::onBackup);
         mBinding.enhance.setOnClickListener(this::onEnhance);
         mBinding.tmdb.setOnClickListener(this::onTmdb);
+        mBinding.mihomo.setOnClickListener(this::onMihomo);
         mBinding.ai.setOnClickListener(this::onAi);
         mBinding.personal.setOnClickListener(this::onPersonal);
         mBinding.player.setOnClickListener(this::onPlayer);
@@ -260,6 +267,10 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
 
     private void onTmdb(View view) {
         getRoot().change(7);
+    }
+
+    private void onMihomo(View view) {
+        MihomoSourceDialog.create(getRoot()).show();
     }
 
     private void onAi(View view) {

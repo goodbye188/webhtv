@@ -184,6 +184,17 @@
     <string name="setting_subtitle">Subtitle setting</string>
     <string name="setting_enhance">Enhancements</string>
     <string name="setting_tmdb">TMDB</string>
+    <string name="setting_mihomo">Proxy kernel</string>
+    <string name="dialog_mihomo_section_kernel">Mihomo kernel</string>
+    <string name="dialog_mihomo_tip">Local Mihomo (Clash Meta) kernel. Sources that declare a proxy (pointing to 127.0.0.1:port) are routed through it; all other traffic stays direct. No global proxy is applied.</string>
+    <string name="dialog_mihomo_subscription_label">Subscription URL</string>
+    <string name="dialog_mihomo_subscription_hint">https://…/sub?token=…</string>
+    <string name="dialog_mihomo_port_label">Listening port</string>
+    <string name="dialog_mihomo_enable_label">Enable proxy kernel</string>
+    <string name="dialog_mihomo_status_idle">Idle</string>
+    <string name="dialog_mihomo_update">Update</string>
+    <string name="dialog_mihomo_test">Test</string>
+    <string name="dialog_mihomo_stop">Stop</string>
     <string name="setting_ai">AI services</string>
     <string name="setting_ai_group_recommendation">Recommendations</string>
     <string name="setting_ai_group_detection">Content detection</string>

@@ -1542,4 +1542,37 @@ public class Setting {
     public static void putSearchSimilarity(int percent) {
         Prefers.put("search_similarity", Math.max(0, Math.min(100, percent)));
     }
+
+    // ------------------------------------------------------------------
+    // 内置 mihomo 代理内核（按源选择性代理，非全局）
+    // ------------------------------------------------------------------
+
+    /** 内核是否启用。 */
+    public static boolean isMihomoEnabled() {
+        return Prefers.getBoolean("mihomo_enabled", false);
+    }
+
+    public static void putMihomoEnabled(boolean enabled) {
+        Prefers.put("mihomo_enabled", enabled);
+    }
+
+    /** 内核监听端口（默认 18890，ext-ctl 用 port+1）。 */
+    public static int getMihomoPort() {
+        int p = Prefers.getInt("mihomo_port", 18890);
+        return p < 1 || p > 65535 ? 18890 : p;
+    }
+
+    public static void putMihomoPort(int port) {
+        Prefers.put("mihomo_port", port < 1 || port > 65535 ? 18890 : port);
+    }
+
+    /** 订阅链接（手动填写，手动刷新，不做内置自动订阅）。 */
+    public static String getMihomoSubscription() {
+        String url = Prefers.getString("mihomo_subscription");
+        return url == null ? "" : url.trim();
+    }
+
+    public static void putMihomoSubscription(String url) {
+        Prefers.put("mihomo_subscription", url == null ? "" : url.trim());
+    }
 }

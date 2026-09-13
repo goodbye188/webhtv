@@ -182,6 +182,17 @@
     <string name="setting_subtitle">字幕設定</string>
     <string name="setting_enhance">增強功能</string>
     <string name="setting_tmdb">TMDB</string>
+    <string name="setting_mihomo">代理內核</string>
+    <string name="dialog_mihomo_section_kernel">Mihomo 內核</string>
+    <string name="dialog_mihomo_tip">本地 Mihomo（Clash Meta）內核。聲明了代理（指向 127.0.0.1:埠號）的爬蟲源走內核，其餘流量保持直連，不影響全域網路。</string>
+    <string name="dialog_mihomo_subscription_label">訂閱位址</string>
+    <string name="dialog_mihomo_subscription_hint">https://…/sub?token=…</string>
+    <string name="dialog_mihomo_port_label">監聽埠號</string>
+    <string name="dialog_mihomo_enable_label">啟用代理內核</string>
+    <string name="dialog_mihomo_status_idle">未啟動</string>
+    <string name="dialog_mihomo_update">更新</string>
+    <string name="dialog_mihomo_test">測速</string>
+    <string name="dialog_mihomo_stop">停止</string>
     <string name="setting_ai">AI 服務</string>
     <string name="setting_ai_group_recommendation">推薦</string>
     <string name="setting_ai_group_detection">內容識別</string>
