@@ -1,5 +1,8 @@
 # mihomo 代理内核模块 — 进度
 
+## 状态: 代码已写完并推远端 (commit f429b36, main 分支)
+- 下一步: 明早去 GitHub Actions 触发「打包AI影」验证编译; 绿勾后下载 APK 装机测试
+
 ## 已完成
 - `MihomoManager.java`（app/src/main/java/com/fongmi/android/tv/proxy/）
   - 二进制下载（GitHub release, 走 GithubProxy 加速, filesDir/proxy/mihomo, gzip→ELF, setExecutable）
