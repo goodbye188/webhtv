@@ -92,20 +92,11 @@ public class KeepGroupsDialog {
         input.setCompoundDrawablePadding(dp(context, 8));
         body.addView(input, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         input.setOnEditorActionListener((v, actionId, event) -> {
-            String name = input.getText() == null ? "" : input.getText().toString().trim();
-            if (TextUtils.isEmpty(name)) {
-                Notify.show(context.getString(R.string.group_name_hint));
-                return true;
-            }
-            List<String> all = getGroups();
-            if (!all.contains(name)) {
-                all.add(name);
-                putGroups(all);
-            }
-            input.setText("");
-            refreshBody(context, body, false);
+            createGroup(context, input, body);
             return true;
         });
+        // 输入框右侧 + 图标 = 提交按钮（compound drawable 可点击）
+        input.setCompoundDrawableOnClickListener(v -> createGroup(context, input, body));
 
         // 分组列表
         TextView empty = new TextView(context);
@@ -123,6 +114,24 @@ public class KeepGroupsDialog {
                 .setView(scroll)
                 .setNegativeButton(R.string.dialog_negative, null)
                 .show();
+    }
+
+    private static void createGroup(@NonNull Context context, @NonNull EditText input, @NonNull LinearLayout body) {
+        String name = input.getText() == null ? "" : input.getText().toString().trim();
+        if (TextUtils.isEmpty(name)) {
+            Notify.show(context.getString(R.string.group_name_hint));
+            return;
+        }
+        List<String> all = getGroups();
+        if (all.contains(name)) {
+            input.setText("");
+            refreshBody(context, body, false);
+            return;
+        }
+        all.add(name);
+        putGroups(all);
+        input.setText("");
+        refreshBody(context, body, false);
     }
 
     private static void refreshBody(@NonNull Context context, @NonNull LinearLayout body, boolean scrolled) {
