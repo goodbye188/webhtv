@@ -2,6 +2,7 @@ package com.fongmi.android.tv.ui.dialog;
 
 import android.content.Context;
 import android.graphics.Typeface;
+import android.text.InputFilter;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -84,7 +85,7 @@ public class KeepGroupsDialog {
         EditText input = new EditText(context);
         input.setHint(R.string.group_name_hint);
         input.setSingleLine(true);
-        input.setMaxLength(20);
+        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(20)});
         input.setPadding(0, dp(context, 10), 0, dp(context, 10));
         input.setBackground(ContextCompat.getDrawable(context, R.drawable.shape_keep_search_input));
         input.setCompoundDrawablesWithIntrinsicBounds(null, null, ContextCompat.getDrawable(context, R.drawable.ic_keep_add), null);
@@ -160,7 +161,7 @@ public class KeepGroupsDialog {
         field.setText(current);
         field.setSelection(current.length());
         field.setSingleLine(true);
-        field.setMaxLength(20);
+        field.setFilters(new InputFilter[]{new InputFilter.LengthFilter(20)});
         FrameLayout wrap = new FrameLayout(context);
         wrap.setPadding(dp(context, 24), dp(context, 8), dp(context, 24), 0);
         wrap.addView(field, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
