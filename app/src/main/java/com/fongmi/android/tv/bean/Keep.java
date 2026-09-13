@@ -15,6 +15,7 @@ import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
@@ -37,6 +38,8 @@ public class Keep implements Diffable<Keep> {
     private int type;
     @SerializedName("cid")
     private int cid;
+    @SerializedName("group")
+    private String group;
 
     public static List<Keep> arrayFrom(String str) {
         Type listType = TypeToken.getParameterized(List.class, Keep.class).getType();
@@ -138,6 +141,30 @@ public class Keep implements Diffable<Keep> {
 
     public void setCid(int cid) {
         this.cid = cid;
+    }
+
+    public String getGroup() {
+        return group;
+    }
+
+    public void setGroup(String group) {
+        this.group = group;
+    }
+
+    public static List<String> getGroups() {
+        List<String> groups = AppDatabase.get().getKeepDao().getGroups();
+        groups.remove("");
+        groups.sort(Comparator.naturalOrder());
+        return groups;
+    }
+
+    public static List<Keep> getByGroup(String group) {
+        if (group == null) return getVod();
+        return AppDatabase.get().getKeepDao().getByGroup(group);
+    }
+
+    public static Keep getByKey(String key) {
+        return AppDatabase.get().getKeepDao().find(VodConfig.getCid(), key);
     }
 
     public String getSiteKey() {

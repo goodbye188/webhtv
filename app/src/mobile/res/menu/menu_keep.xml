@@ -3,6 +3,12 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/group"
+        android:icon="@drawable/ic_folder"
+        android:title="@string/menu_group"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/sync"
         android:icon="@drawable/ic_action_sync"
         android:title="@string/menu_sync"

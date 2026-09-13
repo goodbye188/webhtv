@@ -22,6 +22,21 @@ public abstract class KeepDao extends BaseDao<Keep> {
     @Query("SELECT * FROM Keep WHERE type = 0 AND cid = :cid AND `key` = :key")
     public abstract Keep find(int cid, String key);
 
+    @Query("SELECT * FROM Keep WHERE type = 0 AND `group` = :group ORDER BY createTime DESC")
+    public abstract List<Keep> getByGroup(String group);
+
+    @Query("SELECT DISTINCT `group` FROM Keep WHERE type = 0 AND `group` != ''")
+    public abstract List<String> getGroups();
+
+    @Query("SELECT COUNT(*) FROM Keep WHERE type = 0 AND `group` = :group")
+    public abstract int countByGroup(String group);
+
+    @Query("UPDATE Keep SET `group` = :newGroup WHERE type = 0 AND `group` = :oldGroup")
+    public abstract int renameGroup(String oldGroup, String newGroup);
+
+    @Query("UPDATE Keep SET `group` = '' WHERE type = 0 AND `group` = :group")
+    public abstract void deleteGroup(String group);
+
     @Query("SELECT * FROM Keep WHERE type = 1 AND `key` = :key")
     public abstract Keep find(String key);
 

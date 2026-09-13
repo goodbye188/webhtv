@@ -22,8 +22,8 @@ public class WebViewDataDirectoryGuardTest {
     public void zombieOwnerLockIsRemoved() throws Exception {
         File dataDir = temporaryFolder.newFolder("data");
         File procRoot = temporaryFolder.newFolder("proc");
-        File lock = writeLock(dataDir, 2293, "com.silent.android.webhtv");
-        writeProcess(procRoot, 2293, "Z", "com.silent.android.webhtv");
+        File lock = writeLock(dataDir, 2293, "com.aimedia.tv");
+        writeProcess(procRoot, 2293, "Z", "com.aimedia.tv");
 
         assertTrue(WebViewDataDirectoryGuard.clearStaleLock(dataDir, procRoot, 8088));
         assertFalse(lock.exists());
@@ -33,7 +33,7 @@ public class WebViewDataDirectoryGuardTest {
     public void missingOwnerLockIsRemoved() throws Exception {
         File dataDir = temporaryFolder.newFolder("data");
         File procRoot = temporaryFolder.newFolder("proc");
-        File lock = writeLock(dataDir, 2293, "com.silent.android.webhtv");
+        File lock = writeLock(dataDir, 2293, "com.aimedia.tv");
 
         assertTrue(WebViewDataDirectoryGuard.clearStaleLock(dataDir, procRoot, 8088));
         assertFalse(lock.exists());
@@ -43,8 +43,8 @@ public class WebViewDataDirectoryGuardTest {
     public void liveOwnerLockIsPreserved() throws Exception {
         File dataDir = temporaryFolder.newFolder("data");
         File procRoot = temporaryFolder.newFolder("proc");
-        File lock = writeLock(dataDir, 2293, "com.silent.android.webhtv");
-        writeProcess(procRoot, 2293, "S", "com.silent.android.webhtv");
+        File lock = writeLock(dataDir, 2293, "com.aimedia.tv");
+        writeProcess(procRoot, 2293, "S", "com.aimedia.tv");
 
         assertFalse(WebViewDataDirectoryGuard.clearStaleLock(dataDir, procRoot, 8088));
         assertTrue(lock.exists());
@@ -54,7 +54,7 @@ public class WebViewDataDirectoryGuardTest {
     public void currentProcessLockIsPreserved() throws Exception {
         File dataDir = temporaryFolder.newFolder("data");
         File procRoot = temporaryFolder.newFolder("proc");
-        File lock = writeLock(dataDir, 8088, "com.silent.android.webhtv");
+        File lock = writeLock(dataDir, 8088, "com.aimedia.tv");
 
         assertFalse(WebViewDataDirectoryGuard.clearStaleLock(dataDir, procRoot, 8088));
         assertTrue(lock.exists());
@@ -64,7 +64,7 @@ public class WebViewDataDirectoryGuardTest {
     public void reusedPidLockIsRemoved() throws Exception {
         File dataDir = temporaryFolder.newFolder("data");
         File procRoot = temporaryFolder.newFolder("proc");
-        File lock = writeLock(dataDir, 2293, "com.silent.android.webhtv");
+        File lock = writeLock(dataDir, 2293, "com.aimedia.tv");
         writeProcess(procRoot, 2293, "S", "other.process");
 
         assertTrue(WebViewDataDirectoryGuard.clearStaleLock(dataDir, procRoot, 8088));

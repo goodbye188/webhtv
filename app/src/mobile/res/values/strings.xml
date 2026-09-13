@@ -12,6 +12,18 @@
     <!-- Menu -->
     <string name="menu_sync">Sync</string>
     <string name="menu_delete">Delete</string>
+    <string name="menu_group">Manage groups</string>
+    <string name="group_all">All</string>
+    <string name="group_ungrouped">Ungrouped</string>
+    <string name="group_new">New group</string>
+    <string name="group_name_hint">Group name</string>
+    <string name="group_rename">Rename group</string>
+    <string name="group_delete_confirm">Delete group \"%1$s\"? Its favorites will be moved to Ungrouped.</string>
+    <string name="group_move_to">Move to group</string>
+    <string name="group_empty">No groups yet. Long-press a favorite to create one.</string>
+    <string name="group_delete">Delete group</string>
+    <string name="keep_search_hint">Search in favorites</string>
+    <string name="keep_search_clear">Clear</string>
     <string name="menu_search">Search</string>
     <string name="menu_site">Site</string>
     <string name="menu_reset">Reset</string>

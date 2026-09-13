@@ -157,6 +157,17 @@ public class Migrations {
         }
     };
 
+    /**
+     * 收藏分组：Keep 表新增 `group` 列，老数据自动归到空分组（未分组）。
+     */
+    public static final Migration MIGRATION_45_46 = new Migration(45, 46) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            addColumnIfMissing(database, "Keep", "group",
+                    "ALTER TABLE Keep ADD COLUMN `group` TEXT DEFAULT ''");
+        }
+    };
+
     private static void addColumnIfMissing(
             SupportSQLiteDatabase database,
             String table,

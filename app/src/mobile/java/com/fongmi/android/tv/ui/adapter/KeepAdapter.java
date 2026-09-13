@@ -32,7 +32,7 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
 
         void onItemDelete(Keep item);
 
-        boolean onLongClick();
+        boolean onLongClick(Keep item);
     }
 
     public void setSize(int[] size) {
@@ -107,7 +107,7 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
     }
 
     private void setClickListener(View root, Keep item) {
-        root.setOnLongClickListener(view -> listener.onLongClick());
+        root.setOnLongClickListener(view -> listener.onLongClick(item));
         root.setOnClickListener(view -> {
             if (isDelete()) listener.onItemDelete(item);
             else listener.onItemClick(item);

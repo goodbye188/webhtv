@@ -72,7 +72,7 @@ public class AppBrandingContractTest {
     public void homeTitlePrefersSiteAndConfigNameOverAppName() throws Exception {
         String appBranding = read("app/src/main/java/com/fongmi/android/tv/setting/AppBranding.java");
 
-        // 固定返回应用名会让所有站源都显示成「默影视」
+        // 固定返回应用名会让所有站源都显示成「AI影」
         assertTrue(appBranding.contains("if (homeName != null && !homeName.trim().isEmpty()) return homeName;"));
         assertTrue(appBranding.contains("if (configName != null && !configName.trim().isEmpty()) return configName;"));
     }
@@ -122,9 +122,9 @@ public class AppBrandingContractTest {
         assertTrue(english.contains("<string name=\"setting_app_branding\">App icon</string>"));
         assertTrue(chinese.contains("<string name=\"setting_app_branding\">APP 图标</string>"));
         assertTrue(traditional.contains("<string name=\"setting_app_branding\">APP 圖示</string>"));
-        assertTrue(chinese.contains("<string name=\"app_name\">默影视</string>"));
-        assertTrue(english.contains("<string name=\"app_name\">默影视</string>"));
-        assertTrue(traditional.contains("<string name=\"app_name\">默影視</string>"));
+        assertTrue(chinese.contains("<string name=\"app_name\">AI影</string>"));
+        assertTrue(english.contains("<string name=\"app_name\">AI影</string>"));
+        assertTrue(traditional.contains("<string name=\"app_name\">AI影</string>"));
         assertFalse(chinese.contains("app_name_history"));
         assertFalse(english.contains("app_name_history"));
         assertFalse(traditional.contains("app_name_history"));

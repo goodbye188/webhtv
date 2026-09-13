@@ -52,7 +52,7 @@ public final class AppBranding {
 
     /**
      * 首页标题优先展示站点/配置自己的名字，只有两者都空时才回落到应用名。
-     * 固定返回应用名会让所有站源都显示成「默影视」，看不出当前在哪个源。
+     * 固定返回应用名会让所有站源都显示成「AI影」，看不出当前在哪个源。
      */
     @NonNull
     public static String getDisplayName(@NonNull Context context, @Nullable String homeName, @Nullable String configName) {

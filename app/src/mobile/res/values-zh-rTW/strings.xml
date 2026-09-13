@@ -12,6 +12,18 @@
     <!-- Menu -->
     <string name="menu_sync">同步</string>
     <string name="menu_delete">刪除</string>
+    <string name="menu_group">分組管理</string>
+    <string name="group_all">全部</string>
+    <string name="group_ungrouped">未分組</string>
+    <string name="group_new">新建分組</string>
+    <string name="group_name_hint">分組名稱</string>
+    <string name="group_rename">重新命名分組</string>
+    <string name="group_delete_confirm">刪除分組「%1$s」？其中的收藏將移入未分組。</string>
+    <string name="group_move_to">移入分組</string>
+    <string name="group_empty">還沒有分組，長按收藏項即可建立。</string>
+    <string name="group_delete">刪除分組</string>
+    <string name="keep_search_hint">在收藏中搜尋</string>
+    <string name="keep_search_clear">清除</string>
     <string name="menu_search">搜尋</string>
     <string name="menu_site">站點</string>
     <string name="menu_reset">重設</string>
