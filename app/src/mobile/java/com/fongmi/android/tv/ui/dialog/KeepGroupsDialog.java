@@ -81,22 +81,30 @@ public class KeepGroupsDialog {
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(context, 24), dp(context, 8), dp(context, 24), dp(context, 8));
 
-        // 新建分组输入行
+        // 新建分组行：输入框 + 「添加」按钮
+        LinearLayout inputRow = new LinearLayout(context);
+        inputRow.setOrientation(LinearLayout.HORIZONTAL);
+        inputRow.setGravity(Gravity.CENTER_VERTICAL);
         EditText input = new EditText(context);
         input.setHint(R.string.group_name_hint);
         input.setSingleLine(true);
         input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(20)});
         input.setPadding(0, dp(context, 10), 0, dp(context, 10));
         input.setBackground(ContextCompat.getDrawable(context, R.drawable.shape_keep_search_input));
-        input.setCompoundDrawablesWithIntrinsicBounds(null, null, ContextCompat.getDrawable(context, R.drawable.ic_keep_add), null);
-        input.setCompoundDrawablePadding(dp(context, 8));
-        body.addView(input, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        inputRow.addView(input, inputParams);
+        com.google.android.material.button.MaterialButton add = new com.google.android.material.button.MaterialButton(context);
+        add.setText(R.string.group_add);
+        add.setAllCaps(false);
+        LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        addParams.leftMargin = dp(context, 8);
+        inputRow.addView(add, addParams);
+        body.addView(inputRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         input.setOnEditorActionListener((v, actionId, event) -> {
             createGroup(context, input, body);
             return true;
         });
-        // 输入框右侧 + 图标 = 提交按钮（compound drawable 可点击）
-        input.setCompoundDrawableOnClickListener(v -> createGroup(context, input, body));
+        add.setOnClickListener(v -> createGroup(context, input, body));
 
         // 分组列表
         TextView empty = new TextView(context);

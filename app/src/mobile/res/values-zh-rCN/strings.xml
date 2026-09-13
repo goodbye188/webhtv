@@ -14,6 +14,7 @@
     <string name="menu_delete">删除</string>
     <string name="menu_group">分组管理</string>
     <string name="group_all">全部</string>
+    <string name="group_add">添加</string>
     <string name="group_ungrouped">未分组</string>
     <string name="group_new">新建分组</string>
     <string name="group_name_hint">分组名称</string>
