@@ -45,7 +45,7 @@ public class MihomoSourceDialog {
     private SwitchMaterial enableSwitch;
     private TextView statusText;
     private View downloadButton;
-    private View downloadProgress;
+    private com.google.android.material.progressindicator.LinearProgressIndicator downloadProgress;
     private View updateButton;
     private View autoButton;
     private View nodesButton;
