@@ -206,15 +206,18 @@ public class MihomoSourceDialog {
         boolean enabled = enableSwitch.isChecked();
         Setting.putMihomoSubscription(url);
         Setting.putMihomoPort(port);
-        if (enabled && !Setting.isMihomoEnabled()) {
-            // 首次启用：后台同步等下载完成(阻塞) + 启动
+        if (enabled && !MihomoManager.isRunning()) {
+            // 开关开但内核没在跑(首次启用/下载失败过/进程被杀)：补下载 + 启动
             EXECUTOR.execute(() -> {
-                String err = MihomoManager.ensureBinaryBlocking(ctx(), 180_000);
+                statusText.setText("正在下载/启动内核…");
+                String err = MihomoManager.ensureBinaryBlocking(ctx(), 300_000);
                 if (err == null) err = MihomoManager.start(ctx());
+                if (err == null) err = MihomoManager.updateSubscription(ctx(), url);
                 final String result = err;
                 MAIN.post(() -> {
                     refreshStatus();
                     if (result != null) Notify.show(result);
+                    else Notify.show("代理内核已启动");
                 });
             });
         } else if (!enabled) {
