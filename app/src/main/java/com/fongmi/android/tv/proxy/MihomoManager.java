@@ -13,6 +13,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -83,6 +85,45 @@ public final class MihomoManager {
             }
         });
         return false;
+    }
+
+    /**
+     * 同步确保二进制就绪（阻塞直到下载完成）。供「更新订阅/启用」流程调用，
+     * 避免异步下载未完成就 start() 导致「内核未下载」。
+     *
+     * @return null 表示已就绪；否则为失败原因
+     */
+    public static String ensureBinaryBlocking(Context context, int timeoutMs) {
+        File bin = binary(context);
+        if (bin.exists() && bin.length() > 10_000_000L) return null;
+        CountDownLatch latch = new CountDownLatch(1);
+        String[] err = { null };
+        if (DOWNLOADING.compareAndSet(false, true)) {
+            EXECUTOR.execute(() -> {
+                try {
+                    download(context, bin);
+                } catch (Exception e) {
+                    err[0] = "内核下载失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                } finally {
+                    DOWNLOADING.set(false);
+                    latch.countDown();
+                }
+            });
+            try {
+                if (!latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    return "内核下载超时（" + (timeoutMs / 1000) + "s），请检查网络后重试";
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            if (err[0] != null) return err[0];
+            if (bin.exists() && bin.length() > 10_000_000L) return null;
+            return "内核下载未完成";
+        }
+        // 别人正在下载：等它
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (DOWNLOADING.get() && System.currentTimeMillis() < deadline) sleep(200);
+        return (bin.exists() && bin.length() > 10_000_000L) ? null : "内核下载未完成";
     }
 
     private static void download(Context context, File bin) throws Exception {
@@ -270,6 +311,9 @@ public final class MihomoManager {
     /** 更新订阅：拉取订阅 → 改写端口/控制器 → 写 config.yaml → 启动或重载内核。 */
     public static String updateSubscription(Context context, String url) {
         if (TextUtils.isEmpty(url)) return "订阅地址为空";
+        // 先确保内核二进制已下载（阻塞等待，给用户看到"正在下载"体验而非立刻失败）
+        String dlErr = ensureBinaryBlocking(context, 180_000);
+        if (dlErr != null) return dlErr;
         boolean wasRunning = isRunning();
         try {
             byte[] data;
@@ -366,5 +410,123 @@ public final class MihomoManager {
     /** 内核下载完成后的回调（UI 线程刷新状态）。 */
     public static void onDownloadDone() {
         // no-op hook; UI 自行轮询
+    }
+
+    /** 节点条目（供节点列表 UI 用）。 */
+    public static final class ProxyInfo {
+        public final String name;
+        public final String type;
+        public final String delay;     // 毫秒字符串，无测速结果时为空
+        public final boolean isGroup;
+
+        ProxyInfo(String name, String type, String delay, boolean isGroup) {
+            this.name = name; this.type = type; this.delay = delay; this.isGroup = isGroup;
+        }
+    }
+
+    /** 拉取全部 proxy/group（含类型/延迟），供节点列表。未运行返回 null。 */
+    public static List<ProxyInfo> listProxies(Context context) {
+        if (!isRunning()) return null;
+        String resp = ctl("/proxies", "GET");
+        if (resp.isEmpty()) return null;
+        List<ProxyInfo> out = new java.util.ArrayList<>();
+        try {
+            com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(resp);
+            com.google.gson.JsonObject pro = root.getAsJsonObject().getAsJsonObject("proxies");
+            if (pro == null) return out;
+            for (java.util.Map.Entry<String, com.google.gson.JsonElement> e : pro.entrySet()) {
+                com.google.gson.JsonObject o = e.getValue().getAsJsonObject();
+                String type = o.has("type") ? o.get("type").getAsString() : "";
+                boolean group = "Selector".equalsIgnoreCase(type) || "Fallback".equalsIgnoreCase(type)
+                        || "LoadBalance".equalsIgnoreCase(type) || "URLTest".equalsIgnoreCase(type);
+                String delay = o.has("delay") && !o.get("delay").isJsonNull() ? String.valueOf(o.get("delay").getAsNumber()) : "";
+                out.add(new ProxyInfo(e.getKey(), type, delay, group));
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    /** 对指定 group 全节点测速（POST /proxies/{name}/delay），返回毫秒（<0 失败）。 */
+    public static int delayFor(Context context, String group) {
+        if (!isRunning()) return -1;
+        String resp = ctl("/proxies/" + urlEncode(group) + "/delay?timeout=5000", "POST");
+        if (resp.isEmpty()) return -1;
+        try {
+            com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(resp);
+            return root.getAsJsonObject().getAsInt("delay");
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /**
+     * 自动选最优节点：找出订阅里的真实节点分组（非 group），逐个测延迟，
+     * 选最快的那个，PUT 回该分组。返回选中的节点名；无节点/失败返回 ""。
+     */
+    public static String autoSelect(Context context, java.util.function.Consumer<String> progress) {
+        List<ProxyInfo> proxies = listProxies(context);
+        if (proxies == null) return "";
+        // 真实节点分组：type 不是组容器（Selector/Fallback/LoadBalance/URLTest 之外的多为直连节点；
+        // 但机场一般给个 "PROVIDER_xxx" 的 Selector，我们优先挑带节点的 Selector）
+        // 简化策略：遍历所有 group（isGroup=true），对每个跑一次 delay 测速，取 delay 最小的组，
+        // 再在该组里选 delay 最小的子节点。
+        String bestGroup = "";
+        int bestGroupDelay = Integer.MAX_VALUE;
+        for (ProxyInfo p : proxies) {
+            if (!p.isGroup) continue;
+            if (progress != null) progress.set(p.name);
+            int d = delayFor(context, p.name);
+            if (d >= 0 && d < bestGroupDelay) {
+                bestGroupDelay = d;
+                bestGroup = p.name;
+            }
+        }
+        if (bestGroup.isEmpty()) return "";
+        // 取该 group 里的子节点（/proxies/{group} 的 "proxies" 字段是子节点名列表）
+        String resp = ctl("/proxies/" + urlEncode(bestGroup), "GET");
+        List<String> subs = new java.util.ArrayList<>();
+        try {
+            com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(resp);
+            com.google.gson.JsonElement arr = root.getAsJsonObject().get("proxies");
+            if (arr != null && arr.isJsonArray()) {
+                for (com.google.gson.JsonElement s : arr.getAsJsonArray()) subs.add(s.getAsString());
+            }
+        } catch (Exception ignored) {
+        }
+        // 逐个测子节点
+        String bestNode = bestGroup;
+        int bestDelay = Integer.MAX_VALUE;
+        for (String sub : subs) {
+            if (progress != null) progress.set(sub);
+            int d = delayFor(context, sub);
+            if (d >= 0 && d < bestDelay) {
+                bestDelay = d;
+                bestNode = sub;
+            }
+        }
+        if (!selectProxy(context, bestGroup, bestNode)) bestNode = "";
+        return bestNode;
+    }
+
+    /** 在指定 group 内选某节点（PUT /proxies/{group} body={"name":...}）。 */
+    public static boolean selectProxy(Context context, String group, String node) {
+        if (!isRunning()) return false;
+        try {
+            java.net.URL url = new java.net.URL("http://127.0.0.1:" + (Setting.getMihomoPort() + 1) + "/proxies/" + urlEncode(group));
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("PUT");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Authorization", "Bearer webhtv");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(10000);
+            byte[] body = new String("{\"name\":\"" + node.replace("\"", "\\\"") + "\"}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            conn.getOutputStream().write(body);
+            int code = conn.getResponseCode();
+            return code == 200;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

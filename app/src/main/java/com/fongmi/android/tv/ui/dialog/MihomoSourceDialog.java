@@ -19,7 +19,9 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.fongmi.android.tv.utils.Notify;
 
+import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
+import java.util.List;
 import java.util.concurrent.Executors;
 
 /**
@@ -43,7 +45,8 @@ public class MihomoSourceDialog {
     private SwitchMaterial enableSwitch;
     private TextView statusText;
     private View updateButton;
-    private View testButton;
+    private View autoButton;
+    private View nodesButton;
     private View stopButton;
 
     public static MihomoSourceDialog create(FragmentActivity activity) {
@@ -64,7 +67,8 @@ public class MihomoSourceDialog {
         enableSwitch = view.findViewById(R.id.enableSwitch);
         statusText = view.findViewById(R.id.statusText);
         updateButton = view.findViewById(R.id.updateButton);
-        testButton = view.findViewById(R.id.testButton);
+        autoButton = view.findViewById(R.id.autoButton);
+        nodesButton = view.findViewById(R.id.nodesButton);
         stopButton = view.findViewById(R.id.stopButton);
 
         subscriptionInput.setText(Setting.getMihomoSubscription());
@@ -72,7 +76,8 @@ public class MihomoSourceDialog {
         enableSwitch.setChecked(Setting.isMihomoEnabled());
 
         updateButton.setOnClickListener(v -> onUpdate());
-        testButton.setOnClickListener(v -> onTest());
+        autoButton.setOnClickListener(v -> onAuto());
+        nodesButton.setOnClickListener(v -> onNodes());
         stopButton.setOnClickListener(v -> onStop());
 
         dialog = builder
@@ -112,16 +117,73 @@ public class MihomoSourceDialog {
         });
     }
 
-    private void onTest() {
-        setBusy(true, "正在测速…");
+    private void onAuto() {
+        if (!MihomoManager.isRunning()) {
+            Notify.show(activity.getString(R.string.dialog_mihomo_auto_fail));
+            return;
+        }
+        setBusy(true, "正在自动测速选节点…");
         EXECUTOR.execute(() -> {
-            int count = MihomoManager.testLatency(ctx());
+            String node = MihomoManager.autoSelect(ctx(), name -> {
+                MAIN.post(() -> statusText.setText("测速中: " + name));
+            });
             MAIN.post(() -> {
                 setBusy(false, "");
-                if (count < 0) Notify.show("内核未运行");
-                else Notify.show("共 " + count + " 个节点");
+                if (node.isEmpty()) Notify.show(activity.getString(R.string.dialog_mihomo_auto_fail));
+                else Notify.show(activity.getString(R.string.dialog_mihomo_auto_done, node));
+                refreshStatus();
             });
         });
+    }
+
+    private void onNodes() {
+        if (!MihomoManager.isRunning()) {
+            Notify.show(activity.getString(R.string.dialog_mihomo_nodes_empty));
+            return;
+        }
+        List<MihomoManager.ProxyInfo> proxies = MihomoManager.listProxies(ctx());
+        if (proxies == null || proxies.isEmpty()) {
+            Notify.show(activity.getString(R.string.dialog_mihomo_nodes_empty));
+            return;
+        }
+        // 列表: 组在前(可整组切换), 节点在后(可手动单选)。点节点 = 选它所在的组 + 它
+        StringBuilder items = new StringBuilder();
+        List<String> names = new ArrayList<>();
+        for (MihomoManager.ProxyInfo p : proxies) {
+            String label = p.name + (p.isGroup ? "  ⚙" : "");
+            items.append(label).append('\n');
+            names.add(p.name);
+        }
+        final String[] finalNames = names.toArray(new String[0]);
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
+                .setTitle(R.string.dialog_mihomo_nodes)
+                .setItems(finalNames, (dialog, which) -> {
+                    String name = finalNames[which];
+                    // 点组: 把该组设为当前出口(组默认选最优子节点的行为由 mihomo 内部策略定)
+                    // 点节点: 需要知道它所在组 —— 简化: 先试直接选它(mihomo 对单节点 PUT 无效时回退组)
+                    if (MihomoManager.selectProxy(ctx(), name, name)) {
+                        Notify.show("已选: " + name);
+                    } else {
+                        // 尝试遍历所有组找到包含该节点的组
+                        List<MihomoManager.ProxyInfo> all = MihomoManager.listProxies(ctx());
+                        boolean found = false;
+                        if (all != null) {
+                            for (MihomoManager.ProxyInfo g : all) {
+                                if (!g.isGroup || g.name.equals(name)) continue;
+                                if (MihomoManager.selectProxy(ctx(), g.name, name)) {
+                                    Notify.show("已选 " + g.name + " → " + name);
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!found) Notify.show("选择失败: " + name);
+                    }
+                    dialog.dismiss();
+                    refreshStatus();
+                })
+                .setNegativeButton(R.string.dialog_negative, null)
+                .show();
     }
 
     private void onStop() {
@@ -131,7 +193,8 @@ public class MihomoSourceDialog {
 
     private void setBusy(boolean busy, String status) {
         updateButton.setEnabled(!busy);
-        testButton.setEnabled(!busy);
+        autoButton.setEnabled(!busy);
+        nodesButton.setEnabled(!busy);
         stopButton.setEnabled(!busy);
         if (!TextUtils.isEmpty(status)) statusText.setText(status);
         else refreshStatus();
@@ -144,10 +207,9 @@ public class MihomoSourceDialog {
         Setting.putMihomoSubscription(url);
         Setting.putMihomoPort(port);
         if (enabled && !Setting.isMihomoEnabled()) {
-            // 首次启用：后台下载内核（如缺失）+ 启动
+            // 首次启用：后台同步等下载完成(阻塞) + 启动
             EXECUTOR.execute(() -> {
-                boolean ok = MihomoManager.ensureBinary(ctx(), null);
-                String err = ok ? null : "内核下载未完成";
+                String err = MihomoManager.ensureBinaryBlocking(ctx(), 180_000);
                 if (err == null) err = MihomoManager.start(ctx());
                 final String result = err;
                 MAIN.post(() -> {

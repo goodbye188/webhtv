@@ -192,6 +192,11 @@
     <string name="dialog_mihomo_status_idle">未启动</string>
     <string name="dialog_mihomo_update">更新</string>
     <string name="dialog_mihomo_test">测速</string>
+    <string name="dialog_mihomo_auto">自动选节点</string>
+    <string name="dialog_mihomo_nodes">节点</string>
+    <string name="dialog_mihomo_auto_done">已选最快节点：%1$s</string>
+    <string name="dialog_mihomo_auto_fail">自动选节点失败（内核未运行或无节点）</string>
+    <string name="dialog_mihomo_nodes_empty">暂无节点（内核未运行或订阅未更新）</string>
     <string name="dialog_mihomo_stop">停止</string>
     <string name="setting_ai">AI 服务</string>
     <string name="setting_ai_group_recommendation">推荐</string>

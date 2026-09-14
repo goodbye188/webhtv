@@ -132,7 +132,7 @@
                         android:textAllCaps="false" />
 
                     <com.google.android.material.button.MaterialButton
-                        android:id="@+id/testButton"
+                        android:id="@+id/autoButton"
                         style="@style/Widget.WebHTV.LightDialog.Button.Outlined"
                         android:layout_width="0dp"
                         android:layout_height="48dp"
@@ -140,7 +140,27 @@
                         android:layout_weight="1"
                         android:insetTop="0dp"
                         android:insetBottom="0dp"
-                        android:text="@string/dialog_mihomo_test"
+                        android:text="@string/dialog_mihomo_auto"
+                        android:textAllCaps="false" />
+
+                </androidx.appcompat.widget.LinearLayoutCompat>
+
+                <androidx.appcompat.widget.LinearLayoutCompat
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/nodesButton"
+                        style="@style/Widget.WebHTV.LightDialog.Button.Outlined"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="@string/dialog_mihomo_nodes"
                         android:textAllCaps="false" />
 
                     <com.google.android.material.button.MaterialButton
