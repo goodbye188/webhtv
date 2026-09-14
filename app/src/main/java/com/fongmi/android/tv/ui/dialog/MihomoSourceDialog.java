@@ -207,12 +207,11 @@ public class MihomoSourceDialog {
         Setting.putMihomoSubscription(url);
         Setting.putMihomoPort(port);
         if (enabled && !MihomoManager.isRunning()) {
-            // 开关开但内核没在跑(首次启用/下载失败过/进程被杀)：补下载 + 启动
+            // 开关开但内核没在跑(首次启用/下载失败过/进程被杀)：补下载 + 启动，不碰订阅
             EXECUTOR.execute(() -> {
                 statusText.setText("正在下载/启动内核…");
                 String err = MihomoManager.ensureBinaryBlocking(ctx(), 300_000);
                 if (err == null) err = MihomoManager.start(ctx());
-                if (err == null) err = MihomoManager.updateSubscription(ctx(), url);
                 final String result = err;
                 MAIN.post(() -> {
                     refreshStatus();
