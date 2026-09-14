@@ -149,9 +149,10 @@ public class MihomoSourceDialog {
                 boolean ok = MihomoManager.ensureBinary(ctx(), null);
                 String err = ok ? null : "内核下载未完成";
                 if (err == null) err = MihomoManager.start(ctx());
+                final String result = err;
                 MAIN.post(() -> {
                     refreshStatus();
-                    if (err != null) Notify.show(err);
+                    if (result != null) Notify.show(result);
                 });
             });
         } else if (!enabled) {
