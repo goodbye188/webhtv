@@ -103,9 +103,9 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
         for (String name : names) {
             TextView tab = new TextView(this);
             tab.setText(name);
-            tab.setTextSize(13);
-            int padH = (int) (12 * getResources().getDisplayMetrics().density);
-            int padV = (int) (6 * getResources().getDisplayMetrics().density);
+            tab.setTextSize(15);
+            int padH = (int) (14 * getResources().getDisplayMetrics().density);
+            int padV = (int) (8 * getResources().getDisplayMetrics().density);
             tab.setPadding(padH, padV, padH, padV);
             tab.setBackground(ContextCompat.getDrawable(this, R.drawable.shape_keep_group_tab));
             tab.setTextColor(tabText);

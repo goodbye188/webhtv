@@ -140,6 +140,7 @@ public class KeepGroupsDialog {
         putGroups(all);
         input.setText("");
         refreshBody(context, body, false);
+        RefreshEvent.keep();
     }
 
     private static void refreshBody(@NonNull Context context, @NonNull LinearLayout body, boolean scrolled) {
