@@ -1,7 +1,7 @@
 <resources xmlns:xliff="http://schemas.android.com/apk/res-auto">
 
     <!-- App -->
-    <string name="app_name">AI影</string>
+    <string name="app_name">show</string>
    <string name="setting_app_branding">APP 图标</string>
     <string name="app_branding_icon_current">默认图标</string>
     <string name="app_branding_icon_history">原版图标</string>
@@ -191,6 +191,7 @@
     <string name="dialog_mihomo_enable_label">启用代理内核</string>
     <string name="dialog_mihomo_status_idle">未启动</string>
     <string name="dialog_mihomo_update">更新</string>
+    <string name="dialog_mihomo_download">下载内核</string>
     <string name="dialog_mihomo_test">测速</string>
     <string name="dialog_mihomo_auto">自动选节点</string>
     <string name="dialog_mihomo_nodes">节点</string>

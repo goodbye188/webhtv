@@ -1,7 +1,7 @@
 <resources xmlns:xliff="http://schemas.android.com/apk/res-auto">
 
     <!-- App -->
-   <string name="app_name">AI影</string>
+   <string name="app_name">show</string>
    <string name="setting_app_branding">App icon</string>
     <string name="app_branding_icon_current">Default icon</string>
     <string name="app_branding_icon_history">Original icon</string>
@@ -193,6 +193,7 @@
     <string name="dialog_mihomo_enable_label">Enable proxy kernel</string>
     <string name="dialog_mihomo_status_idle">Idle</string>
     <string name="dialog_mihomo_update">Update</string>
+    <string name="dialog_mihomo_download">Download kernel</string>
     <string name="dialog_mihomo_test">Test</string>
     <string name="dialog_mihomo_auto">Auto node</string>
     <string name="dialog_mihomo_nodes">Nodes</string>

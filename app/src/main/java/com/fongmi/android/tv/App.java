@@ -153,11 +153,11 @@ public class App extends Application implements Application.ActivityLifecycleCal
         RemoteAgent.get().start();
         NsdDeviceDiscovery.register();
         com.fongmi.android.tv.lab.LabAutoStart.start(this);
-        // 代理内核自启：启用且已有订阅配置时，后台拉起本地 mihomo（不阻塞启动）
+        // 代理内核自启：启用且内核已下载时，后台拉起本地 mihomo（不阻塞启动）。
+        // 无订阅也能起（start() 自动生成最小空壳 config），与「内核与订阅解耦」保持一致。
         new Thread(() -> {
             if (com.fongmi.android.tv.setting.Setting.isMihomoEnabled()
-                    && com.fongmi.android.tv.proxy.MihomoManager.isInstalled(this)
-                    && com.fongmi.android.tv.proxy.MihomoManager.configFile(this).exists()) {
+                    && com.fongmi.android.tv.proxy.MihomoManager.isInstalled(this)) {
                 com.fongmi.android.tv.proxy.MihomoManager.start(this);
             }
         }, "mihomo-autostart").start();

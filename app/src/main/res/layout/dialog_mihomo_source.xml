@@ -113,16 +113,36 @@
                     android:paddingTop="10dp"
                     android:text="@string/dialog_mihomo_status_idle" />
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/downloadButton"
+                    style="@style/Widget.WebHTV.LightDialog.Button.Tonal"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="14dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="@string/dialog_mihomo_download"
+                    android:textAllCaps="false" />
+
+                <com.google.android.material.progressindicator.LinearProgressIndicator
+                    android:id="@+id/downloadProgress"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:max="100"
+                    android:progress="0"
+                    android:visibility="gone" />
+
                 <androidx.appcompat.widget.LinearLayoutCompat
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp"
+                    android:layout_marginTop="12dp"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/updateButton"
-                        style="@style/Widget.WebHTV.LightDialog.Button.Tonal"
+                        style="@style/Widget.WebHTV.LightDialog.Button.Outlined"
                         android:layout_width="0dp"
                         android:layout_height="48dp"
                         android:layout_weight="1"

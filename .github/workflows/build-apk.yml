@@ -1,4 +1,4 @@
-name: 打包AI影
+name: 打包show
 
 on:
   workflow_dispatch:
@@ -86,7 +86,7 @@ jobs:
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
-          name: ai影
+          name: show
           path: dist/*.apk
           if-no-files-found: error
           retention-days: 30

@@ -126,7 +126,33 @@ public final class MihomoManager {
         return (bin.exists() && bin.length() > 10_000_000L) ? null : "内核下载未完成";
     }
 
-    private static void download(Context context, File bin) throws Exception {
+    /**
+     * 纯下载内核（只下二进制，不碰订阅、不启动进程）。
+     *
+     * @param progress 下载进度回调，参数 0..1（1=完成），可为 null
+     * @return null 表示成功；否则为失败原因
+     */
+    public static String downloadKernel(Context context, java.util.function.Consumer<Float> progress) {
+        File bin = binary(context);
+        if (bin.exists() && bin.length() > 10_000_000L) return null; // 已下载过
+        if (!DOWNLOADING.compareAndSet(false, true)) {
+            // 别人正在下，简单等它完成
+            long deadline = System.currentTimeMillis() + 120_000;
+            while (DOWNLOADING.get() && System.currentTimeMillis() < deadline) sleep(300);
+            return (bin.exists() && bin.length() > 10_000_000L) ? null : "内核下载未完成";
+        }
+        try {
+            download(context, bin, progress);
+            return null;
+        } catch (Exception e) {
+            return "内核下载失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+        } finally {
+            DOWNLOADING.set(false);
+        }
+    }
+
+    /** 带进度的下载（流式读 + 解压）。progress 可为 null。 */
+    private static void download(Context context, File bin, java.util.function.Consumer<Float> progress) throws Exception {
         bin.getParentFile().mkdirs();
         String url = is64Bit() ? URL_ARM64 : URL_ARMV7;
         // 走 GithubProxy 加速（国内直连 GitHub 不稳定），下载完成后本地缓存、离线可用。
@@ -134,23 +160,44 @@ public final class MihomoManager {
         File tmp = new File(bin.getAbsolutePath() + ".dl");
         try (okhttp3.Response res = OkHttp.newCall(OkHttp.client(120_000), accelerated).execute()) {
             if (!res.isSuccessful()) throw new java.io.IOException("HTTP " + res.code());
-            byte[] data = res.body().bytes();
-            if (data.length < 1_000_000) throw new java.io.IOException("下载内容过小，疑似失败");
-            try (FileOutputStream out = new FileOutputStream(tmp)) {
-                out.write(data);
+            long total = res.body().contentLength(); // 可能 -1
+            try (java.io.InputStream body = res.body().byteStream();
+                 FileOutputStream out = new FileOutputStream(tmp)) {
+                byte[] buf = new byte[65536];
+                int len;
+                long got = 0;
+                while ((len = body.read(buf)) != -1) {
+                    out.write(buf, 0, len);
+                    got += len;
+                    if (progress != null) progress.accept(
+                            total > 0 ? (float) Math.min(1.0, (double) got / total * 0.9) : 0.0f);
+                }
             }
+            if (tmp.length() < 1_000_000) throw new java.io.IOException("下载内容过小，疑似失败");
+            if (progress != null) progress.accept(0.9f); // 下载完成，开始解压
+            gzipTo(tmp, bin, progress);
+            bin.setExecutable(true, false);
+            if (progress != null) progress.accept(1.0f);
+        } finally {
+            tmp.delete();
         }
-        gzipTo(tmp, bin);
-        bin.setExecutable(true, false);
-        tmp.delete();
     }
 
-    private static void gzipTo(File src, File dst) throws Exception {
+    private static void download(Context context, File bin) throws Exception {
+        download(context, bin, null);
+    }
+
+    private static void gzipTo(File src, File dst, java.util.function.Consumer<Float> progress) throws Exception {
         try (InputStream in = new java.util.zip.GZIPInputStream(new java.io.FileInputStream(src));
              FileOutputStream out = new FileOutputStream(dst)) {
             byte[] buf = new byte[65536];
             int len;
-            while ((len = in.read(buf)) != -1) out.write(buf, 0, len);
+            long got = 0;
+            while ((len = in.read(buf)) != -1) {
+                out.write(buf, 0, len);
+                got += len;
+                if (progress != null) progress.accept(0.9f + (float) (got % 1000000) / 1000000 * 0.1f);
+            }
         }
     }
 
@@ -212,18 +259,33 @@ public final class MihomoManager {
     }
 
     /**
-     * 启动内核（订阅 config 必须存在）。
+     * 启动内核。
+     * 二进制缺失 → 提示先下载；无订阅 config → 自动生成最小 config（纯空壳代理，先跑起来）。
      *
      * @return 失败原因；null 表示启动成功
      */
     public static String start(Context context) {
-        if (!isInstalled(context)) return "内核未下载";
+        if (!isInstalled(context)) return "内核未下载，请先点「下载内核」";
         File cfg = configFile(context);
-        if (!cfg.exists()) return "缺少订阅配置（请先更新订阅）";
+        if (!cfg.exists()) {
+            // 无订阅也能启动：生成最小 config（只有端口/控制器），内核空壳运行
+            try {
+                File parent = cfg.getParentFile();
+                if (parent != null && !parent.exists()) parent.mkdirs();
+                int p = Setting.getMihomoPort();
+                java.nio.file.Files.write(cfg.toPath(),
+                        normalizeConfig("", p, p + 1).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            } catch (Exception ignored) {
+            }
+            if (!cfg.exists()) return "配置文件创建失败";
+        }
         if (isRunning()) return null;
         int port = Setting.getMihomoPort();
         if (isPortOpen(port)) {
-            return "端口 " + port + " 被占用，请换一个端口";
+            // app 重启后静态句柄丢失，但上次的 mihomo 子进程可能还活着占着端口。
+            // 探活确认是咱自己的 mihomo（ext-ctl 带 secret=webhtv 才应答）就直接接管，不报错。
+            if (probeRemoteMihomo()) return null;
+            return "端口 " + port + " 被其他程序占用，请换一个端口";
         }
         int ctl = port + 1;
         File bin = binary(context);
@@ -253,6 +315,11 @@ public final class MihomoManager {
     public static void stop() {
         Process p = PROCESS.getAndSet(null);
         if (p != null) p.destroy();
+    }
+
+    /** 经 ext-ctl 探活：端口上的进程是不是我们配的 mihomo（带 secret=webhtv 才应答 Bearer 请求）。 */
+    public static boolean probeRemoteMihomo() {
+        return !ctl("/version", "GET").isEmpty();
     }
 
     /** 停掉旧进程并起新的（用于切换端口/重载配置）。 */
@@ -308,13 +375,9 @@ public final class MihomoManager {
         }
     }
 
-    /** 更新订阅：拉取订阅 → 改写端口/控制器 → 写 config.yaml → 启动或重载内核。 */
+    /** 更新订阅：拉取订阅 → 改写端口/控制器 → 写 config.yaml。不依赖内核、不启动任何东西。 */
     public static String updateSubscription(Context context, String url) {
         if (TextUtils.isEmpty(url)) return "订阅地址为空";
-        // 先确保内核二进制已下载（阻塞等待，给用户看到"正在下载"体验而非立刻失败）
-        String dlErr = ensureBinaryBlocking(context, 180_000);
-        if (dlErr != null) return dlErr;
-        boolean wasRunning = isRunning();
         try {
             byte[] data;
             try (okhttp3.Response res = OkHttp.newCall(OkHttp.client(60_000), url).execute()) {
@@ -328,12 +391,6 @@ public final class MihomoManager {
             try (FileOutputStream out = new FileOutputStream(cfg)) {
                 out.write(normalized.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
-            if (wasRunning) {
-                stop();
-                sleep(300);
-            }
-            String err = start(context);
-            if (err != null) return "订阅已保存，但内核启动失败: " + err;
             return null;
         } catch (Exception e) {
             return "订阅拉取失败: " + e.getMessage();

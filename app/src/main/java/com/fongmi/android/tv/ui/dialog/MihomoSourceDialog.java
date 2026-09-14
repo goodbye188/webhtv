@@ -44,6 +44,8 @@ public class MihomoSourceDialog {
     private EditText portInput;
     private SwitchMaterial enableSwitch;
     private TextView statusText;
+    private View downloadButton;
+    private View downloadProgress;
     private View updateButton;
     private View autoButton;
     private View nodesButton;
@@ -66,6 +68,8 @@ public class MihomoSourceDialog {
         portInput = view.findViewById(R.id.portInput);
         enableSwitch = view.findViewById(R.id.enableSwitch);
         statusText = view.findViewById(R.id.statusText);
+        downloadButton = view.findViewById(R.id.downloadButton);
+        downloadProgress = view.findViewById(R.id.downloadProgress);
         updateButton = view.findViewById(R.id.updateButton);
         autoButton = view.findViewById(R.id.autoButton);
         nodesButton = view.findViewById(R.id.nodesButton);
@@ -75,6 +79,7 @@ public class MihomoSourceDialog {
         portInput.setText(String.valueOf(Setting.getMihomoPort()));
         enableSwitch.setChecked(Setting.isMihomoEnabled());
 
+        downloadButton.setOnClickListener(v -> onDownload());
         updateButton.setOnClickListener(v -> onUpdate());
         autoButton.setOnClickListener(v -> onAuto());
         nodesButton.setOnClickListener(v -> onNodes());
@@ -97,6 +102,38 @@ public class MihomoSourceDialog {
 
     private void refreshStatus() {
         statusText.setText(MihomoManager.statusText(ctx()));
+    }
+
+    private void onDownload() {
+        if (MihomoManager.isInstalled(ctx())) {
+            Notify.show("内核已下载");
+            refreshStatus();
+            return;
+        }
+        setBusy(true, "正在下载内核…");
+        showProgress(true);
+        EXECUTOR.execute(() -> {
+            String err = MihomoManager.downloadKernel(ctx(), f -> {
+                int p = Math.round(f * 100);
+                MAIN.post(() -> {
+                    if (downloadProgress != null) {
+                        downloadProgress.setProgress(p);
+                        statusText.setText("正在下载内核 " + p + "%");
+                    }
+                });
+            });
+            MAIN.post(() -> {
+                setBusy(false, "");
+                showProgress(false);
+                refreshStatus();
+                if (err != null) Notify.show(err);
+                else Notify.show("内核已下载完成");
+            });
+        });
+    }
+
+    private void showProgress(boolean show) {
+        if (downloadProgress != null) downloadProgress.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
     private void onUpdate() {
@@ -192,6 +229,7 @@ public class MihomoSourceDialog {
     }
 
     private void setBusy(boolean busy, String status) {
+        downloadButton.setEnabled(!busy);
         updateButton.setEnabled(!busy);
         autoButton.setEnabled(!busy);
         nodesButton.setEnabled(!busy);
@@ -206,23 +244,31 @@ public class MihomoSourceDialog {
         boolean enabled = enableSwitch.isChecked();
         Setting.putMihomoSubscription(url);
         Setting.putMihomoPort(port);
-        if (enabled && !MihomoManager.isRunning()) {
-            // 开关开但内核没在跑(首次启用/下载失败过/进程被杀)：补下载 + 启动，不碰订阅
+        Setting.putMihomoEnabled(enabled);
+        if (!enabled) {
+            // 关闭：只停进程，别的都不碰
+            MihomoManager.stop();
+            refreshStatus();
+            dialog.dismiss();
+            return;
+        }
+        // 开启：纯粹只启停内核。没内核就提示去点「下载内核」，不自动下载、不碰订阅。
+        if (!MihomoManager.isInstalled(ctx())) {
+            Notify.show("内核未下载，请先点「下载内核」");
+            refreshStatus();
+            dialog.dismiss();
+            return;
+        }
+        if (!MihomoManager.isRunning()) {
             EXECUTOR.execute(() -> {
-                statusText.setText("正在下载/启动内核…");
-                String err = MihomoManager.ensureBinaryBlocking(ctx(), 300_000);
-                if (err == null) err = MihomoManager.start(ctx());
-                final String result = err;
+                String err = MihomoManager.start(ctx());
                 MAIN.post(() -> {
                     refreshStatus();
-                    if (result != null) Notify.show(result);
+                    if (err != null) Notify.show(err);
                     else Notify.show("代理内核已启动");
                 });
             });
-        } else if (!enabled) {
-            MihomoManager.stop();
         }
-        Setting.putMihomoEnabled(enabled);
         dialog.dismiss();
     }
 
