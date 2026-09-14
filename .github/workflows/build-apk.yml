@@ -43,17 +43,25 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
 
       - name: 还原 release 签名 (固定 keystore, 保证可覆盖安装)
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
         run: |
+          set -e
           mkdir -p release
           echo "$ANDROID_KEYSTORE" | base64 -d > release/aiying.keystore
+          test -s release/aiying.keystore || { echo "keystore 还原失败: 空文件"; exit 1; }
           cat > local.properties <<EOF
-          sdk.dir=${ANDROID_SDK_ROOT}
-          storeFile=../release/aiying.keystore
-          keyAlias=${ANDROID_KEY_ALIAS}
-          storePassword=${ANDROID_KEYSTORE_PASS}
-          keyPassword=${ANDROID_KEYSTORE_PASS}
+          sdk.dir=$ANDROID_SDK_ROOT
+          storeFile=$GITHUB_WORKSPACE/release/aiying.keystore
+          keyAlias=$ANDROID_KEY_ALIAS
+          storePassword=$ANDROID_KEYSTORE_PASS
+          keyPassword=$ANDROID_KEYSTORE_PASS
           EOF
           ls -l release/aiying.keystore
+          echo "=== local.properties ==="
+          cat local.properties
 
       - name: 构建手机版 release 包
         env:

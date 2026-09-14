@@ -454,7 +454,9 @@ public final class MihomoManager {
         if (resp.isEmpty()) return -1;
         try {
             com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(resp);
-            return root.getAsJsonObject().getAsInt("delay");
+            com.google.gson.JsonObject o = root.getAsJsonObject();
+            if (!o.has("delay") || o.get("delay").isJsonNull()) return -1;
+            return o.get("delay").getAsInt();
         } catch (Exception e) {
             return -1;
         }
@@ -475,7 +477,7 @@ public final class MihomoManager {
         int bestGroupDelay = Integer.MAX_VALUE;
         for (ProxyInfo p : proxies) {
             if (!p.isGroup) continue;
-            if (progress != null) progress.set(p.name);
+            if (progress != null) progress.accept(p.name);
             int d = delayFor(context, p.name);
             if (d >= 0 && d < bestGroupDelay) {
                 bestGroupDelay = d;
@@ -498,7 +500,7 @@ public final class MihomoManager {
         String bestNode = bestGroup;
         int bestDelay = Integer.MAX_VALUE;
         for (String sub : subs) {
-            if (progress != null) progress.set(sub);
+            if (progress != null) progress.accept(sub);
             int d = delayFor(context, sub);
             if (d >= 0 && d < bestDelay) {
                 bestDelay = d;
