@@ -37,9 +37,9 @@ public final class MihomoManager {
     public static final String VERSION = "v1.19.30";
     private static final String UA = "webhtv-mihomo/" + VERSION;
     private static final String URL_ARM64 = "https://github.com/MetaCubeX/mihomo/releases/download/"
-            + VERSION + "/mihomo-android-arm64-v8" + VERSION + ".gz";
+            + VERSION + "/mihomo-android-arm64-v8-" + VERSION + ".gz";
     private static final String URL_ARMV7 = "https://github.com/MetaCubeX/mihomo/releases/download/"
-            + VERSION + "/mihomo-android-armv7" + VERSION + ".gz";
+            + VERSION + "/mihomo-android-armv7-" + VERSION + ".gz";
 
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "mihomo-manager");
