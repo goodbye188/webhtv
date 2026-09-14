@@ -8,6 +8,7 @@ import com.github.catvod.net.OkHttp;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -64,8 +65,8 @@ public final class MihomoManager {
         return new File(context.getFilesDir(), "proxy/mihomo");
     }
 
-    /** 内置内核资产（assets/mihomo/mihomo.gz，按 ABI flavor 内置对应架构）。 */
-    private static final String ASSET_KERNEL = "mihomo/mihomo.gz";
+    /** 内置内核资产（assets/mihomo/mihomo，按 ABI flavor 内置对应架构，未压缩 ELF 直接拷出）。 */
+    private static final String ASSET_KERNEL = "mihomo/mihomo";
 
     /** APK 里是否内置了内核二进制。 */
     public static boolean hasEmbedded(Context context) {
@@ -78,7 +79,7 @@ public final class MihomoManager {
     }
 
     /**
-     * 从内置资产解压出内核（离线可用，不碰网络）。
+     * 从内置资产拷出内核（离线可用，不碰网络）。assets 里是未压缩 ELF，直接拷出。
      *
      * @param progress 进度回调（0..1），可为 null
      * @return null 表示成功；否则为失败原因
@@ -106,15 +107,22 @@ public final class MihomoManager {
                         }
                     }
                 }
-                if (progress != null) progress.accept(new DownloadProgress(0.8f, 0, 0));
-                gzipTo(tmp, bin, progress);
+                if (!tmp.renameTo(bin)) {
+                    // 跨文件系统 rename 失败兜底：直接拷
+                    try (java.io.InputStream in = new FileInputStream(tmp);
+                         FileOutputStream out = new FileOutputStream(bin)) {
+                        byte[] buf = new byte[65536];
+                        int len;
+                        while ((len = in.read(buf)) != -1) out.write(buf, 0, len);
+                    }
+                }
                 bin.setExecutable(true, false);
                 if (progress != null) progress.accept(new DownloadProgress(1.0f, 0, 0));
                 if (isInstalled(context)) return null;
-                return "内置内核解压后校验失败";
+                return "内置内核拷出后校验失败";
             } catch (Exception e) {
                 bin.delete();
-                return "内置内核解压失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                return "内置内核拷出失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
             } finally {
                 tmp.delete();
             }
