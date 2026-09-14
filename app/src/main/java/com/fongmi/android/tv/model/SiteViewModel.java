@@ -241,7 +241,13 @@ public class SiteViewModel extends ViewModel {
                 },
                 error -> {
                     if (taskId.get() != currentId) return;
-                    if (error instanceof CancellationException) return;
+                    if (error instanceof CancellationException) {
+                        // 被新任务抢占/取消的旧翻页任务也要收尾,否则 SearchPageState 的 pending
+                        // 永远卡住,后续翻页全部失效(表现为"划到底不加载下一页")。
+                        // 仅对 RESULT(搜索/分类/详情) 做收尾,PLAYER 取消走原逻辑。
+                        if (type != TaskType.PLAYER) liveData.postValue(Result.empty());
+                        return;
+                    }
                     Result failure = error instanceof ExtractException ? Result.error(error.getMessage()) : Result.empty();
                     if (type == TaskType.PLAYER) App.post(() -> {
                         if (taskId.get() != currentId) return;
