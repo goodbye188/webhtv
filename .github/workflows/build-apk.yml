@@ -42,6 +42,19 @@ jobs:
         run: |
           sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
 
+      - name: 还原 release 签名 (固定 keystore, 保证可覆盖安装)
+        run: |
+          mkdir -p release
+          echo "$ANDROID_KEYSTORE" | base64 -d > release/aiying.keystore
+          cat > local.properties <<EOF
+          sdk.dir=${ANDROID_SDK_ROOT}
+          storeFile=../release/aiying.keystore
+          keyAlias=${ANDROID_KEY_ALIAS}
+          storePassword=${ANDROID_KEYSTORE_PASS}
+          keyPassword=${ANDROID_KEYSTORE_PASS}
+          EOF
+          ls -l release/aiying.keystore
+
       - name: 构建手机版 release 包
         env:
           WEBHTV_RELEASE_TAG: "dev"
