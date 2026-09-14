@@ -246,13 +246,13 @@ public final class MihomoManager {
 
     private static String ctl(String path, String method) {
         int port = Setting.getMihomoPort();
-        java.net.URL url = new java.net.URL("http://127.0.0.1:" + (port + 1) + path);
-        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-        conn.setRequestMethod(method == null ? "GET" : method);
-        conn.setRequestProperty("Authorization", "Bearer webhtv");
-        conn.setConnectTimeout(5000);
-        conn.setReadTimeout(30000);
         try {
+            java.net.URL url = new java.net.URL("http://127.0.0.1:" + (port + 1) + path);
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setRequestMethod(method == null ? "GET" : method);
+            conn.setRequestProperty("Authorization", "Bearer webhtv");
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(30000);
             int code = conn.getResponseCode();
             if (code != 200) return "";
             try (BufferedReader r = new BufferedReader(
