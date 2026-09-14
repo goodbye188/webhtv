@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -50,6 +51,8 @@ public final class MihomoManager {
     private static final AtomicReference<Process> PROCESS = new AtomicReference<>();
     private static final AtomicBoolean DOWNLOADING = new AtomicBoolean();
     private static final Object LOCK = new Object();
+    /** 内核就绪操作（内置解压 / 网络下载）互斥锁：防并发写同一文件。 */
+    private static final Object ASYNC_LOCK = new Object();
 
     private MihomoManager() {
     }
@@ -61,9 +64,82 @@ public final class MihomoManager {
         return new File(context.getFilesDir(), "proxy/mihomo");
     }
 
-    /** mihomo 是否已下载。 */
+    /** 内置内核资产（assets/mihomo/mihomo.gz，按 ABI flavor 内置对应架构）。 */
+    private static final String ASSET_KERNEL = "mihomo/mihomo.gz";
+
+    /** APK 里是否内置了内核二进制。 */
+    public static boolean hasEmbedded(Context context) {
+        try {
+            context.getAssets().open(ASSET_KERNEL).close();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 从内置资产解压出内核（离线可用，不碰网络）。
+     *
+     * @param progress 进度回调（0..1），可为 null
+     * @return null 表示成功；否则为失败原因
+     */
+    public static String extractFromAssets(Context context, java.util.function.Consumer<DownloadProgress> progress) {
+        if (!hasEmbedded(context)) return "APK 未内置内核资产";
+        File bin = binary(context);
+        if (isInstalled(context)) return null; // 已就绪（含并发方刚解压完）
+        File tmp = new File(bin.getAbsolutePath() + ".asset");
+        // 与网络下载共用 ASYNC_LOCK，防并发写同一文件
+        synchronized (ASYNC_LOCK) {
+            if (isInstalled(context)) return null;
+            try {
+                long got = 0;
+                try (java.io.InputStream in = context.getAssets().open(ASSET_KERNEL);
+                     FileOutputStream out = new FileOutputStream(tmp)) {
+                    byte[] buf = new byte[65536];
+                    int len;
+                    while ((len = in.read(buf)) != -1) {
+                        out.write(buf, 0, len);
+                        got += len;
+                        if (progress != null) {
+                            // 拷贝阶段（assets 流不报总长，按已拷字节显示）
+                            progress.accept(new DownloadProgress(0.0f, got, -1));
+                        }
+                    }
+                }
+                if (progress != null) progress.accept(new DownloadProgress(0.8f, 0, 0));
+                gzipTo(tmp, bin, progress);
+                bin.setExecutable(true, false);
+                if (progress != null) progress.accept(new DownloadProgress(1.0f, 0, 0));
+                if (isInstalled(context)) return null;
+                return "内置内核解压后校验失败";
+            } catch (Exception e) {
+                bin.delete();
+                return "内置内核解压失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            } finally {
+                tmp.delete();
+            }
+        }
+    }
+
+    /**
+     * 确保二进制就绪：内置资产优先（离线快），失败再走网络多源下载。
+     *
+     * @return null 表示已就绪；否则为失败原因
+     */
+    public static String ensureKernel(Context context, java.util.function.Consumer<DownloadProgress> progress) {
+        if (isInstalled(context)) return null;
+        if (hasEmbedded(context)) {
+            String err = extractFromAssets(context, progress);
+            if (err == null) return null;
+            // 内置失败（如架构不匹配）→ 落回网络下载
+        }
+        return downloadKernel(context, progress);
+    }
+
+    /** mihomo 是否已下载（按大小判定，残留小文件不算）。 */
     public static boolean isInstalled(Context context) {
-        return binary(context).exists();
+        File bin = binary(context);
+        return bin.exists() && bin.length() > 10_000_000L;
     }
 
     /**
@@ -126,41 +202,61 @@ public final class MihomoManager {
         return (bin.exists() && bin.length() > 10_000_000L) ? null : "内核下载未完成";
     }
 
+    /** 下载进度。totalBytes>0 时 fraction 可靠；未知总长时 fraction=0，用 bytes 显示。 */
+    public record DownloadProgress(float fraction, long bytes, long totalBytes) {
+        public boolean totalKnown() {
+            return totalBytes > 0;
+        }
+    }
+
     /**
      * 纯下载内核（只下二进制，不碰订阅、不启动进程）。
+     * 多源 fallback：按序尝试各 GitHub 加速源，最后回退直连；单源超时/失败自动换下一个。
      *
-     * @param progress 下载进度回调，参数 0..1（1=完成），可为 null
+     * @param progress 进度回调，可为 null
      * @return null 表示成功；否则为失败原因
      */
-    public static String downloadKernel(Context context, java.util.function.Consumer<Float> progress) {
+    public static String downloadKernel(Context context, java.util.function.Consumer<DownloadProgress> progress) {
         File bin = binary(context);
-        if (bin.exists() && bin.length() > 10_000_000L) return null; // 已下载过
+        if (isInstalled(context)) return null; // 已下载过（>10MB 才算）
         if (!DOWNLOADING.compareAndSet(false, true)) {
             // 别人正在下，简单等它完成
             long deadline = System.currentTimeMillis() + 120_000;
             while (DOWNLOADING.get() && System.currentTimeMillis() < deadline) sleep(300);
-            return (bin.exists() && bin.length() > 10_000_000L) ? null : "内核下载未完成";
+            return isInstalled(context) ? null : "内核下载未完成";
         }
+        List<String> errors = new ArrayList<>();
         try {
-            download(context, bin, progress);
-            return null;
-        } catch (Exception e) {
-            return "内核下载失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            for (String candidate : candidateUrls()) {
+                try {
+                    download(context, bin, candidate, progress);
+                    return null;
+                } catch (Exception e) {
+                    errors.add(candidate + " -> " + e.getMessage());
+                    bin.delete(); // 清残留，避免下次被误判为已下载
+                }
+            }
+            return "内核下载失败（全部来源均失败）: " + String.join(" | ", errors);
         } finally {
             DOWNLOADING.set(false);
         }
     }
 
-    /** 带进度的下载（流式读 + 解压）。progress 可为 null。 */
-    private static void download(Context context, File bin, java.util.function.Consumer<Float> progress) throws Exception {
+    /** 候选下载源：直连 + 各 GitHub 加速源（按用户当前代理模式改写，去重），每个失败自动换下一个。 */
+    static List<String> candidateUrls() {
+        String direct = is64Bit() ? URL_ARM64 : URL_ARMV7;
+        return com.fongmi.android.tv.utils.GithubProxy.candidatesFor(direct);
+    }
+
+    /** 带进度的下载（流式读 + 解压）。progress 可为 null；直接用给定 url（已由调用方拼好加速前缀）。 */
+    private static void download(Context context, File bin, String url, java.util.function.Consumer<DownloadProgress> progress) throws Exception {
         bin.getParentFile().mkdirs();
-        String url = is64Bit() ? URL_ARM64 : URL_ARMV7;
-        // 走 GithubProxy 加速（国内直连 GitHub 不稳定），下载完成后本地缓存、离线可用。
-        String accelerated = com.fongmi.android.tv.utils.GithubProxy.apply(url);
         File tmp = new File(bin.getAbsolutePath() + ".dl");
-        try (okhttp3.Response res = OkHttp.newCall(OkHttp.client(120_000), accelerated).execute()) {
-            if (!res.isSuccessful()) throw new java.io.IOException("HTTP " + res.code());
-            long total = res.body().contentLength(); // 可能 -1
+        try (okhttp3.Response res = OkHttp.newCall(OkHttp.client(120_000), url).execute()) {
+            if (!res.isSuccessful() || res.body() == null) {
+                throw new java.io.IOException(res.body() == null ? "空响应" : "HTTP " + res.code());
+            }
+            long total = res.body().contentLength(); // 可能 -1（加速源不报总长）
             try (java.io.InputStream body = res.body().byteStream();
                  FileOutputStream out = new FileOutputStream(tmp)) {
                 byte[] buf = new byte[65536];
@@ -169,25 +265,37 @@ public final class MihomoManager {
                 while ((len = body.read(buf)) != -1) {
                     out.write(buf, 0, len);
                     got += len;
-                    if (progress != null) progress.accept(
-                            total > 0 ? (float) Math.min(1.0, (double) got / total * 0.9) : 0.0f);
+                    if (progress != null) {
+                        float frac = total > 0 ? (float) Math.min(1.0, (double) got / total * 0.9) : 0.0f;
+                        progress.accept(new DownloadProgress(frac, got, total));
+                    }
                 }
             }
             if (tmp.length() < 1_000_000) throw new java.io.IOException("下载内容过小，疑似失败");
-            if (progress != null) progress.accept(0.9f); // 下载完成，开始解压
+            if (progress != null) progress.accept(new DownloadProgress(0.9f, 0, 0)); // 下载完成，开始解压
             gzipTo(tmp, bin, progress);
             bin.setExecutable(true, false);
-            if (progress != null) progress.accept(1.0f);
+            if (progress != null) progress.accept(new DownloadProgress(1.0f, 0, 0));
         } finally {
             tmp.delete();
         }
     }
 
     private static void download(Context context, File bin) throws Exception {
-        download(context, bin, null);
+        List<String> errors = new ArrayList<>();
+        for (String candidate : candidateUrls()) {
+            try {
+                download(context, bin, candidate, null);
+                return;
+            } catch (Exception e) {
+                errors.add(e.getMessage());
+                bin.delete();
+            }
+        }
+        throw new java.io.IOException("内核下载失败（全部来源均失败）: " + String.join(" | ", errors));
     }
 
-    private static void gzipTo(File src, File dst, java.util.function.Consumer<Float> progress) throws Exception {
+    private static void gzipTo(File src, File dst, java.util.function.Consumer<DownloadProgress> progress) throws Exception {
         try (InputStream in = new java.util.zip.GZIPInputStream(new java.io.FileInputStream(src));
              FileOutputStream out = new FileOutputStream(dst)) {
             byte[] buf = new byte[65536];
@@ -196,7 +304,7 @@ public final class MihomoManager {
             while ((len = in.read(buf)) != -1) {
                 out.write(buf, 0, len);
                 got += len;
-                if (progress != null) progress.accept(0.9f + (float) (got % 1000000) / 1000000 * 0.1f);
+                if (progress != null) progress.accept(new DownloadProgress(0.9f + (float) (got % 1000000) / 1000000 * 0.1f, 0, 0));
             }
         }
     }
@@ -289,21 +397,27 @@ public final class MihomoManager {
         }
         int ctl = port + 1;
         File bin = binary(context);
+        // -d 指定可写工作目录：mihomo 启动时会对 homeDir 做 config.Init（MkdirAll + 建 config.yaml），
+        // 不传则用默认目录，Android 上不可写 → Fatal 秒退 → 端口不监听。
+        File homeDir = bin.getParentFile();
+        if (!homeDir.exists() && !homeDir.mkdirs()) homeDir = context.getFilesDir();
         try {
             ProcessBuilder pb = new ProcessBuilder(
-                    bin.getAbsolutePath(), "-f", cfg.getAbsolutePath(),
+                    bin.getAbsolutePath(), "-d", homeDir.getAbsolutePath(),
+                    "-f", cfg.getAbsolutePath(),
                     "-ext-ctl", "127.0.0.1:" + ctl,
                     "-secret", "webhtv");
             pb.redirectErrorStream(true);
             Process process = pb.start();
-            drain(process.getInputStream());
+            StringBuilder logBuf = drain(process.getInputStream());
             PROCESS.set(process);
             // 等内核起来
-            long deadline = System.currentTimeMillis() + 5000;
+            long deadline = System.currentTimeMillis() + 8000;
             while (System.currentTimeMillis() < deadline && !isPortOpen(port)) sleep(100);
             if (!isPortOpen(port)) {
                 stop();
-                return "内核启动失败（端口 " + port + " 未监听）";
+                String log = logTail(logBuf);
+                return "内核启动失败（端口 " + port + " 未监听）" + log;
             }
             return null;
         } catch (Exception e) {
@@ -329,17 +443,32 @@ public final class MihomoManager {
         return start(context);
     }
 
-    private static void drain(InputStream in) {
+    /** 排空内核 stdout（防缓冲区写满阻塞），并保留最后 12KB 文本用于启动失败诊断。返回共享 StringBuilder。 */
+    private static StringBuilder drain(InputStream in) {
+        StringBuilder tail = new StringBuilder();
         Thread t = new Thread(() -> {
             byte[] buf = new byte[8192];
             try {
-                while (in.read(buf) != -1) {
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    synchronized (tail) {
+                        tail.append(new String(buf, 0, n, java.nio.charset.StandardCharsets.UTF_8));
+                        if (tail.length() > 12_000) tail.delete(0, tail.length() - 12_000);
+                    }
                 }
             } catch (Exception ignored) {
             }
         }, "mihomo-drain");
         t.setDaemon(true);
         t.start();
+        return tail;
+    }
+
+    private static String logTail(StringBuilder sb) {
+        synchronized (sb) {
+            String s = sb.toString().trim();
+            return s.isEmpty() ? "" : "，内核输出: " + s;
+        }
     }
 
     private static void sleep(long ms) {

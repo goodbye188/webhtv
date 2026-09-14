@@ -110,15 +110,19 @@ public class MihomoSourceDialog {
             refreshStatus();
             return;
         }
-        setBusy(true, "正在下载内核…");
+        setBusy(true, "正在准备内核…");
         showProgress(true);
         EXECUTOR.execute(() -> {
-            String err = MihomoManager.downloadKernel(ctx(), f -> {
-                int p = Math.round(f * 100);
+            String err = MihomoManager.ensureKernel(ctx(), p -> {
                 MAIN.post(() -> {
-                    if (downloadProgress != null) {
-                        downloadProgress.setProgress(p);
-                        statusText.setText("正在下载内核 " + p + "%");
+                    if (downloadProgress == null) return;
+                    if (p.totalKnown()) {
+                        int pct = Math.round(p.fraction() * 100);
+                        downloadProgress.setProgress(pct);
+                        statusText.setText("正在准备内核 " + pct + "%");
+                    } else {
+                        // 内置解压/加速源不报总长：状态文本显示已处理量
+                        if (p.bytes() > 0) statusText.setText("正在准备内核 " + String.format(java.util.Locale.US, "%.1f", p.bytes() / 1048576.0) + " MB");
                     }
                 });
             });
@@ -127,7 +131,7 @@ public class MihomoSourceDialog {
                 showProgress(false);
                 refreshStatus();
                 if (err != null) Notify.show(err);
-                else Notify.show("内核已下载完成");
+                else Notify.show("内核已就绪");
             });
         });
     }
@@ -252,11 +256,27 @@ public class MihomoSourceDialog {
             dialog.dismiss();
             return;
         }
-        // 开启：纯粹只启停内核。没内核就提示去点「下载内核」，不自动下载、不碰订阅。
+        // 开启：确保内核就绪（内置资产则本地秒解压；都没有才提示走「下载内核」按钮）
         if (!MihomoManager.isInstalled(ctx())) {
-            Notify.show("内核未下载，请先点「下载内核」");
-            refreshStatus();
-            dialog.dismiss();
+            if (!MihomoManager.hasEmbedded(ctx())) {
+                Notify.show("内核未下载，请先点「下载内核」");
+                refreshStatus();
+                dialog.dismiss();
+                return;
+            }
+            // 内置资产：后台解压（快，离线）
+            setBusy(true, "正在准备内核…");
+            EXECUTOR.execute(() -> {
+                MihomoManager.ensureKernel(ctx(), null);
+                String err = startIfReady();
+                MAIN.post(() -> {
+                    setBusy(false, "");
+                    refreshStatus();
+                    if (err != null) Notify.show(err);
+                    else Notify.show("代理内核已启动");
+                });
+                dialog.dismiss();
+            });
             return;
         }
         if (!MihomoManager.isRunning()) {
@@ -270,6 +290,13 @@ public class MihomoSourceDialog {
             });
         }
         dialog.dismiss();
+    }
+
+    /** 内核就绪后启动（未运行才起）。返回启动失败原因；null 表示成功/无需启动。 */
+    private String startIfReady() {
+        if (!MihomoManager.isInstalled(ctx())) return "内核准备失败，请先点「下载内核」";
+        if (MihomoManager.isRunning()) return null;
+        return MihomoManager.start(ctx());
     }
 
     private static String text(EditText view) {

@@ -64,6 +64,24 @@ public final class GithubProxy {
         return first(Setting.getGithubProxy());
     }
 
+    /**
+     * 给定目标下载 URL，生成候选源列表：直连 + 各加速源按用户当前模式改写（去重）。
+     * 供关键二进制下载做「直连失败自动换下一个」的多源 fallback，与 {@link #apply} 的改写规则保持一致。
+     */
+    public static List<String> candidatesFor(String targetUrl) {
+        List<String> list = new ArrayList<>();
+        if (!isEmpty(targetUrl)) list.add(targetUrl);
+        String mode = normalizeMode(Setting.getGithubProxyMode());
+        for (String source : getSources()) {
+            try {
+                String rewritten = new Config("proxy", normalize(source), mode).rewrite(targetUrl);
+                if (!list.contains(rewritten)) list.add(rewritten);
+            } catch (Exception ignored) {
+            }
+        }
+        return list;
+    }
+
     public static boolean isBuiltIn(String source) {
         if (isEmpty(source)) return false;
         String normalized = normalize(source).toLowerCase(Locale.ROOT);
