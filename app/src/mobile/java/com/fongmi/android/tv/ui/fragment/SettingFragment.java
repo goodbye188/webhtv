@@ -275,7 +275,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     }
 
     private void onMihomo(View view) {
-        MihomoSourceDialog.create(getRoot()).show();
+        MihomoSourceDialog.create(getRoot(), this::setMihomoText).show();
     }
 
     private void onAi(View view) {
@@ -402,6 +402,12 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
 
     private void setWallText() {
         mBinding.wallUrl.setText(Setting.getWallDesc(WallConfig.getDesc()));
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (mBinding != null) setMihomoText();
     }
 
     @Override

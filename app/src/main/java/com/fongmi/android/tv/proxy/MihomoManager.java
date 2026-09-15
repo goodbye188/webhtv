@@ -188,7 +188,7 @@ public final class MihomoManager {
      */
     public static synchronized boolean ensureBinary(Context context, Runnable done) {
         File bin = binary(context);
-        if (bin.exists() && bin.length() > 10_000_000L) return true;
+        if (isInstalled(context)) return true;
         if (!DOWNLOADING.compareAndSet(false, true)) return true;
         EXECUTOR.execute(() -> {
             try {
@@ -210,7 +210,7 @@ public final class MihomoManager {
      */
     public static String ensureBinaryBlocking(Context context, int timeoutMs) {
         File bin = binary(context);
-        if (bin.exists() && bin.length() > 10_000_000L) return null;
+        if (isInstalled(context)) return null;
         CountDownLatch latch = new CountDownLatch(1);
         String[] err = { null };
         if (DOWNLOADING.compareAndSet(false, true)) {
@@ -232,13 +232,13 @@ public final class MihomoManager {
                 Thread.currentThread().interrupt();
             }
             if (err[0] != null) return err[0];
-            if (bin.exists() && bin.length() > 10_000_000L) return null;
+            if (isInstalled(context)) return null;
             return "内核下载未完成";
         }
         // 别人正在下载：等它
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (DOWNLOADING.get() && System.currentTimeMillis() < deadline) sleep(200);
-        return (bin.exists() && bin.length() > 10_000_000L) ? null : "内核下载未完成";
+        return isInstalled(context) ? null : "内核下载未完成";
     }
 
     /** 下载进度。totalBytes>0 时 fraction 可靠；未知总长时 fraction=0，用 bytes 显示。 */
@@ -524,6 +524,18 @@ public final class MihomoManager {
         }
     }
 
+    /**
+     * 等待内核稳定运行一小段时间，避免 start()/reload 后 UI 立即误报成功。
+     */
+    public static boolean waitUntilRunning(Context context, long timeoutMs) {
+        long deadline = System.currentTimeMillis() + Math.max(0L, timeoutMs);
+        do {
+            if (isRunning(context)) return true;
+            sleep(100);
+        } while (System.currentTimeMillis() < deadline);
+        return isRunning(context);
+    }
+
     public static void stop() {
         Process p = PROCESS.getAndSet(null);
         if (p != null) p.destroy();
@@ -787,8 +799,13 @@ public final class MihomoManager {
 
     /** ext-ctl 重载当前 config。 */
     public static String reloadConfig(Context context) {
+        if (!isRunning() && !probeRemoteMihomo()) {
+            return "配置重载失败：内核未运行";
+        }
         String resp = ctl("/configs", "PUT");
-        return resp.isEmpty() ? "配置重载失败（内核未运行?）" : null;
+        if (resp.isEmpty()) return "配置重载失败：内核控制接口无响应";
+        return isRunning(context) ? null
+                : "配置重载后内核未监听端口 " + Setting.getMihomoPort();
     }
 
     /** 经 ext-ctl 全节点测速，返回节点数。 */

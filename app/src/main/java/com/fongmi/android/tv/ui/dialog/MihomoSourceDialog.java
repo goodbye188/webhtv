@@ -38,6 +38,7 @@ public class MihomoSourceDialog {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     private final FragmentActivity activity;
+    private final Runnable onStateChanged;
     private AlertDialog dialog;
 
     private EditText subscriptionInput;
@@ -51,11 +52,16 @@ public class MihomoSourceDialog {
     private View autoButton;
 
     public static MihomoSourceDialog create(FragmentActivity activity) {
-        return new MihomoSourceDialog(activity);
+        return new MihomoSourceDialog(activity, null);
     }
 
-    private MihomoSourceDialog(FragmentActivity activity) {
+    public static MihomoSourceDialog create(FragmentActivity activity, Runnable onStateChanged) {
+        return new MihomoSourceDialog(activity, onStateChanged);
+    }
+
+    private MihomoSourceDialog(FragmentActivity activity, Runnable onStateChanged) {
         this.activity = activity;
+        this.onStateChanged = onStateChanged;
     }
 
     public void show() {
@@ -74,7 +80,7 @@ public class MihomoSourceDialog {
         autoButton = view.findViewById(R.id.autoNodeButton);
 
         subscriptionInput.setText(Setting.getMihomoSubscription());
-        // 开关状态 = 内核真实运行状态（含 app 重启后接管的远端实例）；内核没跑就显示关，不假开
+        // 打开时显示当前真实运行状态；更新/保存成功后才把“启用”状态持久化。
         enableSwitch.setChecked(MihomoManager.isRunning(ctx()));
 
         // 内置缺失（v7a）才露出下载按钮；arm64 包 .so 系统解包后即内置，不显示
@@ -104,8 +110,6 @@ public class MihomoSourceDialog {
     /** 刷新状态行：内核真实运行状态 + 节点数（后台拉 ext-ctl，避免卡 UI）。 */
     private void refreshStatus() {
         boolean running = MihomoManager.isRunning(ctx());
-        // 开关始终反映内核真实状态：内核没跑（含远端已死）就不假装开着
-        if (enableSwitch.isChecked() != running) enableSwitch.setChecked(running);
         if (!running) {
             statusText.setText(activity.getString(R.string.dialog_mihomo_status_idle));
             return;
@@ -163,16 +167,49 @@ public class MihomoSourceDialog {
         setBusy(true, "正在更新订阅…");
         EXECUTOR.execute(() -> {
             String err = MihomoManager.updateSubscription(ctx(), url);
-            final String[] startErr = { null };
+            String startErr = null;
+            boolean running = false;
+
             if (err == null) {
-                startErr[0] = MihomoManager.reloadOrStart(ctx());
+                startErr = MihomoManager.reloadOrStart(ctx());
+                if (startErr == null) {
+                    running = MihomoManager.waitUntilRunning(ctx(), 1500);
+                    if (!running) {
+                        startErr = "订阅已保存，但内核启动后未稳定监听端口 "
+                                + Setting.getMihomoPort();
+                    }
+                }
             }
+
+            final String finalErr = err;
+            final String finalStartErr = startErr;
+            final boolean finalRunning = running;
+
             MAIN.post(() -> {
                 setBusy(false, "");
+
+                if (finalErr != null) {
+                    Notify.show(finalErr);
+                    refreshStatus();
+                    return;
+                }
+
+                if (finalStartErr != null || !finalRunning) {
+                    Setting.putMihomoSubscription(url);
+                    enableSwitch.setChecked(false);
+                    Setting.putMihomoEnabled(false);
+                    refreshStatus();
+                    Notify.show("订阅已保存，代理未启动：" + finalStartErr);
+                    if (onStateChanged != null) onStateChanged.run();
+                    return;
+                }
+
+                Setting.putMihomoSubscription(url);
+                Setting.putMihomoEnabled(true);
+                enableSwitch.setChecked(true);
                 refreshStatus();
-                if (err != null) Notify.show(err);
-                else if (startErr[0] != null) Notify.show("订阅已保存，" + startErr[0]);
-                else Notify.show(activity.getString(R.string.dialog_mihomo_started));
+                Notify.show(activity.getString(R.string.dialog_mihomo_started));
+                if (onStateChanged != null) onStateChanged.run();
             });
         });
     }
@@ -289,38 +326,55 @@ public class MihomoSourceDialog {
         String url = text(subscriptionInput);
         boolean enabled = enableSwitch.isChecked();
         Setting.putMihomoSubscription(url);
-        Setting.putMihomoEnabled(enabled);
+
         if (!enabled) {
+            Setting.putMihomoEnabled(false);
             MihomoManager.stop();
             refreshStatus();
+            if (onStateChanged != null) onStateChanged.run();
             dialog.dismiss();
             return;
         }
-        // 内核二进制缺失（v7a 未下载）：开不了，开关回弹为关
+
         if (!MihomoManager.isInstalled(ctx())) {
             enableSwitch.setChecked(false);
+            Setting.putMihomoEnabled(false);
             Notify.show(activity.getString(R.string.dialog_mihomo_kernel_missing));
             refreshStatus();
+            if (onStateChanged != null) onStateChanged.run();
             return;
         }
-        // 已运行就不用再动
+
         if (MihomoManager.isRunning(ctx())) {
+            Setting.putMihomoEnabled(true);
+            enableSwitch.setChecked(true);
+            if (onStateChanged != null) onStateChanged.run();
             dialog.dismiss();
             return;
         }
-        // 开启：后台起内核；起不来 → 开关回弹为关 + 报错（不再假装开着）
+
         setBusy(true, "正在启动…");
         EXECUTOR.execute(() -> {
             String err = MihomoManager.start(ctx());
+            boolean running = err == null && MihomoManager.waitUntilRunning(ctx(), 1500);
+
             MAIN.post(() -> {
                 setBusy(false, "");
-                if (err != null) {
+                if (!running) {
                     enableSwitch.setChecked(false);
-                    Notify.show("代理未启动: " + err);
-                } else {
-                    Notify.show(activity.getString(R.string.dialog_mihomo_started));
+                    Setting.putMihomoEnabled(false);
+                    Notify.show("代理未启动: "
+                            + (err != null ? err : "内核启动后未稳定运行"));
+                    refreshStatus();
+                    if (onStateChanged != null) onStateChanged.run();
+                    return;
                 }
+
+                Setting.putMihomoEnabled(true);
+                enableSwitch.setChecked(true);
+                Notify.show(activity.getString(R.string.dialog_mihomo_started));
                 refreshStatus();
+                if (onStateChanged != null) onStateChanged.run();
                 if (dialog != null && dialog.isShowing()) dialog.dismiss();
             });
         });
