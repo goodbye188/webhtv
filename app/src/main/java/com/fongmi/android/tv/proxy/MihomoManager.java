@@ -70,9 +70,6 @@ public final class MihomoManager {
      * 没有该 .so（如 v7a 包）时回退到 filesDir/proxy/mihomo（assets 内置或网络下载）。
      */
     public static File binary(Context context) {
-        String nld = context.getApplicationInfo().nativeLibraryDir;
-        File so = new File(nld, "libmihomo.so");
-        if (so.exists() && so.length() > 10_000_000L) return so;
         return new File(context.getFilesDir(), "proxy/mihomo");
     }
 
@@ -158,7 +155,31 @@ public final class MihomoManager {
     /** mihomo 是否已下载（按大小判定，残留小文件不算）。 */
     public static boolean isInstalled(Context context) {
         File bin = binary(context);
-        return bin.exists() && bin.length() > 10_000_000L;
+        if (!bin.exists() || !bin.isFile() || bin.length() <= 10_000_000L) {
+            return false;
+        }
+
+        // ELF magic: reject incomplete downloads, HTML error pages, etc.
+        try (FileInputStream in = new FileInputStream(bin)) {
+            byte[] magic = new byte[4];
+            if (in.read(magic) != 4
+                    || magic[0] != 0x7f
+                    || magic[1] != 'E'
+                    || magic[2] != 'L'
+                    || magic[3] != 'F') {
+                return false;
+            }
+        } catch (Exception e) {
+            return false;
+        }
+
+        if (!bin.canExecute()) {
+            try {
+                bin.setExecutable(true, false);
+            } catch (Exception ignored) {
+            }
+        }
+        return bin.canExecute();
     }
 
     /**
@@ -429,8 +450,26 @@ public final class MihomoManager {
         // 不传则用默认目录，Android 上不可写 → Fatal 秒退 → 端口不监听。
         // 固定用 filesDir/proxy（可写）：bin 可能来自 nativeLibraryDir（只读解包目录），不能用它的 parent。
         File homeDir = new File(context.getFilesDir(), "proxy");
-        if (!homeDir.exists() && !homeDir.mkdirs()) homeDir = context.getFilesDir();
+        if (!homeDir.exists() && !homeDir.mkdirs()) {
+            return "内核目录创建失败: " + homeDir.getAbsolutePath();
+        }
         try {
+            if (!bin.exists()) {
+                return "mihomo 二进制不存在: " + bin.getAbsolutePath();
+            }
+            if (!bin.isFile()) {
+                return "mihomo 二进制不是普通文件: " + bin.getAbsolutePath();
+            }
+            if (!bin.canExecute()) {
+                try {
+                    bin.setExecutable(true, false);
+                } catch (Exception ignored) {
+                }
+                if (!bin.canExecute()) {
+                    return "mihomo 二进制没有执行权限: " + bin.getAbsolutePath();
+                }
+            }
+
             ProcessBuilder pb = new ProcessBuilder(
                     bin.getAbsolutePath(), "-d", homeDir.getAbsolutePath(),
                     "-f", cfg.getAbsolutePath(),
@@ -449,6 +488,18 @@ public final class MihomoManager {
                 return "mihomo 进程启动异常:\n" + sw;
             }
             StringBuilder logBuf = drain(process.getInputStream());
+            // Detect an immediate crash and expose its output instead of only
+            // reporting that the port was not listening.
+            try {
+                Thread.sleep(120);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            if (!process.isAlive()) {
+                int exit = process.exitValue();
+                return "mihomo 启动后立即退出（退出码 " + exit
+                        + "，二进制 " + bin.getAbsolutePath() + "）" + logTail(logBuf);
+            }
             PROCESS.set(process);
             // 等内核起来
             long deadline = System.currentTimeMillis() + 8000;
