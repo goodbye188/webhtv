@@ -632,8 +632,8 @@ public final class MihomoManager {
                 conn.getOutputStream().write(body);
             }
             int code = conn.getResponseCode();
-            if (code != 200) {
-                // 保留非 200 响应码 + 响应体, 下次排查直接看到 401/405/415 而不是空串
+            if (code < 200 || code >= 300) {
+                // 保留非 2xx 响应码 + 响应体, 下次排查直接看到 401/405/415 而不是空串
                 lastCtlCode = code;
                 try (java.io.InputStream es = conn.getErrorStream()) {
                     if (es != null) lastCtlError = new String(es.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
@@ -641,6 +641,9 @@ public final class MihomoManager {
                 }
                 return "";
             }
+            // 2xx 全算成功：PUT /configs 重载成功返回 204 No Content（无 body），
+            // 2xx 时读 body（204 没有就返回空串，属正常），不再把 204 误判成失败。
+            lastCtlCode = code;
             try (BufferedReader r = new BufferedReader(
                     new InputStreamReader(conn.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                 StringBuilder sb = new StringBuilder();
@@ -831,8 +834,8 @@ public final class MihomoManager {
         if (!isRunning() && !probeRemoteMihomo()) {
             return "配置重载失败：内核未运行";
         }
-        String resp = ctl("/configs", "PUT");
-        if (resp.isEmpty()) {
+        ctl("/configs", "PUT");
+        if (lastCtlCode < 200 || lastCtlCode >= 300) {
             return "配置重载失败：内核控制接口无响应 (HTTP " + lastCtlCode + " " + lastCtlError + ")";
         }
         // 重载后内核重新初始化需片刻，等端口稳定再报成功，避免误报
@@ -870,10 +873,10 @@ public final class MihomoManager {
         return "";
     }
 
-    /** 手动选择节点（ext-ctl PUT /proxies/{group}）。 */
+    /** 手动选择节点（ext-ctl PUT /proxies/{group}，成功返回 2xx，204 无 body 也算成功）。 */
     public static boolean selectProxy(Context context, String name) {
-        String resp = ctl("/proxies/" + urlEncode(name), "PUT");
-        return !resp.isEmpty();
+        ctl("/proxies/" + urlEncode(name), "PUT");
+        return lastCtlCode >= 200 && lastCtlCode < 300;
     }
 
     private static String urlEncode(String s) {
@@ -1067,7 +1070,8 @@ public final class MihomoManager {
             byte[] body = new String("{\"name\":\"" + node.replace("\"", "\\\"") + "\"}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
             conn.getOutputStream().write(body);
             int code = conn.getResponseCode();
-            return code == 200;
+            // mihomo 选节点成功回 204 No Content，2xx 都算成功
+            return code >= 200 && code < 300;
         } catch (Exception e) {
             return false;
         }
