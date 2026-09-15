@@ -951,7 +951,11 @@ public final class MihomoManager {
         return out;
     }
 
-    /** 对指定 group 全节点测速（POST /proxies/{name}/delay），返回毫秒（<0 失败）。 */
+    /** 最近一次节点测速失败的 HTTP 码/响应（诊断用；成功时复位）。 */
+    static volatile int lastDelayCode = -1;
+    static volatile String lastDelayError = "";
+
+    /** 对指定 group 全节点测速（POST /proxies/{name}/delay/{秒}），返回毫秒（<0 失败）。 */
     public static int delayFor(Context context, String group) {
         return delayFor(context, group, 5000);
     }
@@ -959,8 +963,17 @@ public final class MihomoManager {
     /** 测单个 proxy/ group 的真实握手延迟（内核本地直连节点服务器，不经任何测速网站）。 */
     static int delayFor(Context context, String name, int timeoutMs) {
         if (!isRunning(context)) return -1;
-        String resp = ctl("/proxies/" + urlEncode(name) + "/delay?timeout=" + timeoutMs, "POST");
-        if (resp.isEmpty()) return -1;
+        lastDelayCode = -1;
+        lastDelayError = "";
+        // mihomo delay API 端点是 path 带「秒」：/proxies/{name}/delay/{seconds}。
+        // 旧写法 query "?timeout=毫秒" 内核不认 → 全部节点测速失败 → UI 误报"暂无节点"。
+        int timeoutSec = Math.max(1, (timeoutMs + 999) / 1000); // 向上取整：3500ms→4s
+        String resp = ctl("/proxies/" + urlEncode(name) + "/delay/" + timeoutSec, "POST");
+        if (resp.isEmpty()) {
+            lastDelayCode = lastCtlCode;
+            lastDelayError = lastCtlError;
+            return -1;
+        }
         try {
             com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(resp);
             com.google.gson.JsonObject o = root.getAsJsonObject();
