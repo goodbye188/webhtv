@@ -281,10 +281,14 @@ public final class MihomoManager {
         }
     }
 
-    /** 候选下载源：直连 + 各 GitHub 加速源（按用户当前代理模式改写，去重），每个失败自动换下一个。 */
+    /** 候选下载源：官方仓库经 gh-proxy.com 强制加速（首选）→ ghfast.top 兜底 → 官方仓库直连。 */
     static List<String> candidateUrls() {
         String direct = is64Bit() ? URL_ARM64 : URL_ARMV7;
-        return com.fongmi.android.tv.utils.GithubProxy.candidatesFor(direct);
+        List<String> list = new ArrayList<>();
+        list.add("https://gh-proxy.com/" + direct);
+        list.add("https://ghfast.top/" + direct);
+        list.add(direct);
+        return list;
     }
 
     /** 带进度的下载（流式读 + 解压）。progress 可为 null；直接用给定 url（已由调用方拼好加速前缀）。 */
