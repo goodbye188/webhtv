@@ -958,20 +958,28 @@ public final class MihomoManager {
     static volatile int lastDelayCode = -1;
     static volatile String lastDelayError = "";
 
-    /** 对指定 group 全节点测速（POST /proxies/{name}/delay/{秒}），返回毫秒（<0 失败）。 */
+    /** 测速目标（经节点直连的站点，返回 204 且轻量，Clash 系标准 test-url）。 */
+    private static final String DELAY_TEST_URL = "https://www.gstatic.com/generate_204";
+
+    /** 对指定 group 全节点测速, 返回毫秒（<0 失败）。 */
     public static int delayFor(Context context, String group) {
         return delayFor(context, group, 5000);
     }
 
-    /** 测单个 proxy/ group 的真实握手延迟（内核本地直连节点服务器，不经任何测速网站）。 */
+    /** 测单个 proxy/group 的真实握手延迟。
+     * mihomo 源码 hub/route/proxies.go 实证：
+     *   GET /proxies/{name}/delay?url=<测速目标>&timeout=<毫秒>
+     * 注意：方法是 GET（不是 POST）、参数在 query、timeout 单位是毫秒、路径里没有数字。
+     * url 不传/传空 → 内核 503「An error occurred in the delay test」。 */
     static int delayFor(Context context, String name, int timeoutMs) {
         if (!isRunning(context)) return -1;
         lastDelayCode = -1;
         lastDelayError = "";
-        // mihomo delay API 端点是 path 带「秒」：/proxies/{name}/delay/{seconds}。
-        // 旧写法 query "?timeout=毫秒" 内核不认 → 全部节点测速失败 → UI 误报"暂无节点"。
-        int timeoutSec = Math.max(1, (timeoutMs + 999) / 1000); // 向上取整：3500ms→4s
-        String resp = ctl("/proxies/" + urlEncode(name) + "/delay/" + timeoutSec, "POST");
+        int timeout = Math.max(1, timeoutMs);
+        String path = "/proxies/" + urlEncode(name)
+                + "/delay?url=" + urlEncode(DELAY_TEST_URL)
+                + "&timeout=" + timeout;
+        String resp = ctl(path, "GET");
         if (resp.isEmpty()) {
             lastDelayCode = lastCtlCode;
             lastDelayError = lastCtlError;
