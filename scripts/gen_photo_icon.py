@@ -35,34 +35,15 @@ def lerp(a, b, t):
 
 
 def make_icon(src, size, circular):
-    """生成单个图标：照片原布局 + 边缘羽化到暖白渐变背景 + (圆角/圆形) 蒙版。
+    """生成单个图标：照片原图 1:1 不变，只套 (圆角/圆形) 蒙版。
 
-    人物位置和大小与原图一致（1:1 不裁切），仅四周暗色背景通过
-    径向羽化 alpha 过渡到暖白系渐变，小图标下边缘是干净暖色。
+    人物布局、背景完全保持原图，不做任何换背景/光晕处理。
     """
     SS = 4  # 超采样倍数，保证边缘平滑
     big = size * SS
 
-    # 背景：暖白系对角渐变
-    img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    for y in range(big):
-        d.line([(0, y), (big, y)], fill=lerp(BG_A, BG_B, y / big) + (255,))
-
-    # 照片 1:1 原布局贴上来，边缘带径向羽化 alpha（中心不透明 → 边缘透明，露出暖背景）
-    photo = src.convert("RGBA").resize((big, big), Image.LANCZOS)
-    # 羽化 mask：正方形归一化切比雪夫距离 d∈[0,0.5]，d<=0.34 全保留，0.34→0.50 余弦褪到 0
-    import numpy as np
-    arr = np.arange(big, dtype=np.float32)
-    dx = np.abs(arr - big / 2) / big
-    dy = np.abs(arr - big / 2) / big
-    dist = np.maximum(dx[:, None], dy[None, :])  # 各向同性
-    m = np.ones((big, big), dtype=np.float32)
-    fade = (dist - 0.34) / (0.50 - 0.34)
-    fade = np.clip(fade, 0.0, 1.0)
-    m *= (1.0 - 0.5 * (1 - np.cos(fade * np.pi)))  # 余弦缓动
-    photo.putalpha(Image.fromarray((m * 255).astype("uint8")))
-    img.alpha_composite(photo)
+    # 照片 1:1 直接缩放
+    img = src.convert("RGBA").resize((big, big), Image.LANCZOS)
 
     # 蒙版
     mask = Image.new("L", (big, big), 0)
