@@ -149,16 +149,16 @@ public class MihomoSourceDialog {
         setBusy(true, "正在更新订阅…");
         EXECUTOR.execute(() -> {
             String err = MihomoManager.updateSubscription(ctx(), url);
-            String startErr = null;
+            final String[] startErr = { null };
             if (err == null) {
                 // 订阅写入成功后让内核生效：运行中则重载新 config，没运行则直接拉起
-                startErr = MihomoManager.reloadOrStart(ctx());
+                startErr[0] = MihomoManager.reloadOrStart(ctx());
             }
             MAIN.post(() -> {
                 setBusy(false, "");
                 refreshStatus();
                 if (err != null) Notify.show(err);
-                else if (startErr != null) Notify.show("订阅已保存，" + startErr);
+                else if (startErr[0] != null) Notify.show("订阅已保存，" + startErr[0]);
                 else Notify.show("订阅已更新，内核已重载");
             });
         });
