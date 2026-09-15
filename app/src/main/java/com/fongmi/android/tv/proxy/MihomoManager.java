@@ -12,6 +12,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -435,16 +437,35 @@ public final class MihomoManager {
                     "-ext-ctl", "127.0.0.1:" + ctl,
                     "-secret", "webhtv");
             pb.redirectErrorStream(true);
-            Process process = pb.start();
+            Process process;
+            try {
+                process = pb.start();
+            } catch (Exception e) {
+                // 显式捕获:exec 层失败(Permission denied / Exec format error / No such file)
+                // 在这里抛,直接回显完整堆栈,避免被外层 catch 吃掉细节。
+                StringWriter sw = new StringWriter();
+                e.printStackTrace(new PrintWriter(sw));
+                stop();
+                return "mihomo 进程启动异常:\n" + sw;
+            }
             StringBuilder logBuf = drain(process.getInputStream());
             PROCESS.set(process);
             // 等内核起来
             long deadline = System.currentTimeMillis() + 8000;
             while (System.currentTimeMillis() < deadline && !isPortOpen(port)) sleep(100);
             if (!isPortOpen(port)) {
+                // 进程秒退:带退出码定位(1=参数/config 错,126/127=不可执行/格式错,126=无执行权限)
+                int exit = -1;
+                try {
+                    exit = process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+                            ? process.exitValue() : -1;
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
                 stop();
                 String log = logTail(logBuf);
-                return "内核启动失败（端口 " + port + " 未监听）" + log;
+                return "内核启动失败（端口 " + port + " 未监听，退出码 " + exit
+                        + "，二进制 " + bin.getAbsolutePath() + "）" + log;
             }
             return null;
         } catch (Exception e) {
