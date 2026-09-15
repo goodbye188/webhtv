@@ -24,7 +24,6 @@ import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.impl.ConfigListener;
 import com.fongmi.android.tv.impl.LiveListener;
 import com.fongmi.android.tv.impl.SiteListener;
-import com.fongmi.android.tv.proxy.MihomoManager;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.activity.HomeActivity;
 import com.fongmi.android.tv.ui.base.BaseFragment;
@@ -96,7 +95,10 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     }
 
     private void setMihomoText() {
-        mBinding.mihomoText.setText(MihomoManager.statusText(getRoot().getApplicationContext()));
+        // 对齐星落：设置页只露开关级状态（关/开），不显示内核内部状态
+        mBinding.mihomoText.setText(Setting.isMihomoEnabled()
+                ? getString(R.string.dialog_mihomo_status_on)
+                : getString(R.string.dialog_mihomo_status_off));
     }
 
     private void setOtherText() {

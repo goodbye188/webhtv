@@ -612,12 +612,17 @@ public final class MihomoManager {
         }
     }
 
-    /** 把内核状态文本化（供设置卡片显示）。 */
+    /** 把内核状态文本化（供设置卡片/弹窗显示）。去内部术语，只露开关级状态。 */
     public static String statusText(Context context) {
-        if (!isInstalled(context)) return "内核未下载";
-        if (!isRunning()) return "内核未启动";
+        if (!isRunning()) return "未启动";
         String p = currentProxy(context);
         return p.isEmpty() ? "运行中" : "运行中 · 节点 " + p;
+    }
+
+    /** 订阅里的节点总数（未运行返回 0）。同步 ext-ctl，UI 线程慎用（一般后台拉）。 */
+    public static int nodeCount(Context context) {
+        List<ProxyInfo> list = listProxies(context);
+        return list == null ? 0 : list.size();
     }
 
     /** 内核下载完成后的回调（UI 线程刷新状态）。 */

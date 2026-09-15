@@ -35,7 +35,7 @@
                     style="@style/Widget.WebHTV.LightDialog.Label"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/dialog_mihomo_section_kernel" />
+                    android:text="@string/dialog_mihomo_title" />
 
                 <com.google.android.material.textview.MaterialTextView
                     style="@style/Widget.WebHTV.LightDialog.Helper"
@@ -59,27 +59,6 @@
                     android:gravity="center_vertical"
                     android:hint="@string/dialog_mihomo_subscription_hint"
                     android:inputType="textUri"
-                    android:maxLines="1"
-                    android:paddingStart="12dp"
-                    android:paddingEnd="12dp"
-                    android:selectAllOnFocus="false" />
-
-                <com.google.android.material.textview.MaterialTextView
-                    style="@style/Widget.WebHTV.LightDialog.Label"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:paddingTop="14dp"
-                    android:paddingBottom="8dp"
-                    android:text="@string/dialog_mihomo_port_label" />
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/portInput"
-                    style="@style/Widget.WebHTV.LightDialog.Input"
-                    android:layout_width="120dp"
-                    android:layout_height="44dp"
-                    android:gravity="center_vertical"
-                    android:hint="18890"
-                    android:inputType="number"
                     android:maxLines="1"
                     android:paddingStart="12dp"
                     android:paddingEnd="12dp"
@@ -113,6 +92,7 @@
                     android:paddingTop="10dp"
                     android:text="@string/dialog_mihomo_status_idle" />
 
+                <!-- 下载内核：仅内置缺失时（v7a 包）动态显示，arm64 内置包不显示 -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/downloadButton"
                     style="@style/Widget.WebHTV.LightDialog.Button.Tonal"
@@ -122,7 +102,8 @@
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
                     android:text="@string/dialog_mihomo_download"
-                    android:textAllCaps="false" />
+                    android:textAllCaps="false"
+                    android:visibility="gone" />
 
                 <com.google.android.material.progressindicator.LinearProgressIndicator
                     android:id="@+id/downloadProgress"
@@ -160,7 +141,7 @@
                         android:layout_weight="1"
                         android:insetTop="0dp"
                         android:insetBottom="0dp"
-                        android:text="@string/dialog_mihomo_auto"
+                        android:text="@string/dialog_mihomo_test"
                         android:textAllCaps="false" />
 
                 </androidx.appcompat.widget.LinearLayoutCompat>
@@ -184,7 +165,7 @@
                         android:textAllCaps="false" />
 
                     <com.google.android.material.button.MaterialButton
-                        android:id="@+id/stopButton"
+                        android:id="@+id/autoNodeButton"
                         style="@style/Widget.WebHTV.LightDialog.Button.Outlined"
                         android:layout_width="0dp"
                         android:layout_height="48dp"
@@ -192,7 +173,7 @@
                         android:layout_weight="1"
                         android:insetTop="0dp"
                         android:insetBottom="0dp"
-                        android:text="@string/dialog_mihomo_stop"
+                        android:text="@string/dialog_mihomo_auto"
                         android:textAllCaps="false" />
 
                 </androidx.appcompat.widget.LinearLayoutCompat>
