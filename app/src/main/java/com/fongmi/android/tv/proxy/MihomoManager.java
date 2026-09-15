@@ -555,6 +555,10 @@ public final class MihomoManager {
                 normalized = normalizeConfig(maybeDecodeBase64(raw), port, port + 1);
             }
             File cfg = configFile(context);
+            File parent = cfg.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                return "配置目录创建失败: " + parent.getAbsolutePath();
+            }
             try (FileOutputStream out = new FileOutputStream(cfg)) {
                 out.write(normalized.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
