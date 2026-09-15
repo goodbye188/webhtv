@@ -805,7 +805,7 @@ public final class MihomoManager {
 
     /** 拉取全部 proxy/group（含类型/延迟），供节点列表。未运行返回 null。 */
     public static List<ProxyInfo> listProxies(Context context) {
-        if (!isRunning()) return null;
+        if (!isRunning(context)) return null;
         String resp = ctl("/proxies", "GET");
         if (resp.isEmpty()) return null;
         List<ProxyInfo> out = new java.util.ArrayList<>();
