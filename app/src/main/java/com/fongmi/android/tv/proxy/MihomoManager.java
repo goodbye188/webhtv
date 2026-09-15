@@ -881,7 +881,10 @@ public final class MihomoManager {
 
     private static String urlEncode(String s) {
         try {
-            return java.net.URLEncoder.encode(s, "UTF-8");
+            // 节点名常带空格（去重后「名 host」）。URLEncoder 把空格编成 +，
+            // 但 mihomo API 路由不按 query 解码 path 段，+ 会原样保留 → 名字对不上 404。
+            // Clash 系 API 标准要求空格编 %20。
+            return java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20");
         } catch (Exception e) {
             return s;
         }
