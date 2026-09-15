@@ -29,8 +29,8 @@ import java.util.concurrent.Executors;
  * 代理订阅配置卡片（对齐星落：设置页「代理订阅 关/开」，弹窗只露
  * 订阅地址 + 启用开关 + 更新/测速/节点/自动 四个按钮，不出现"内核"术语）。
  *
- * <p>内核（libmihomo.so）由系统安装时自动解包，启用即起；
- * 仅内置缺失的包（v7a）才动态显示「下载内核」按钮。
+ * <p>内核（mihomo ELF）首次启用时下载到 filesDir/proxy/mihomo；
+ * 内核未就绪时动态显示「下载内核」按钮。
  */
 public class MihomoSourceDialog {
 

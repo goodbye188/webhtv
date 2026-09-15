@@ -65,9 +65,8 @@ public final class MihomoManager {
     // ---------------------------------------------------------------- binary
 
     /**
-     * mihomo 可执行文件。优先用系统安装时自动解包并赋执行权限的
-     * {@code nativeLibraryDir/libmihomo.so}（装完即用，零拷贝零下载，star-fall 同款方案）；
-     * 没有该 .so（如 v7a 包）时回退到 filesDir/proxy/mihomo（assets 内置或网络下载）。
+     * mihomo 可执行文件：{@code filesDir/proxy/mihomo}（网络下载得到，ELF 头校验）。
+     * 不再走 nativeLibraryDir/libmihomo.so（该 .so 已删除，内核只此一路）。
      */
     public static File binary(Context context) {
         return new File(context.getFilesDir(), "proxy/mihomo");
@@ -448,7 +447,7 @@ public final class MihomoManager {
         File bin = binary(context);
         // -d 指定可写工作目录：mihomo 启动时会对 homeDir 做 config.Init（MkdirAll + 建 config.yaml），
         // 不传则用默认目录，Android 上不可写 → Fatal 秒退 → 端口不监听。
-        // 固定用 filesDir/proxy（可写）：bin 可能来自 nativeLibraryDir（只读解包目录），不能用它的 parent。
+        // 固定用 filesDir/proxy（可写）。
         File homeDir = new File(context.getFilesDir(), "proxy");
         if (!homeDir.exists() && !homeDir.mkdirs()) {
             return "内核目录创建失败: " + homeDir.getAbsolutePath();
