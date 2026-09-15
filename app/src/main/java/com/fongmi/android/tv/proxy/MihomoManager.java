@@ -606,17 +606,41 @@ public final class MihomoManager {
 
     // ---------------------------------------------------------------- ext-ctl
 
+    /** 最近一次 ext-ctl 响应码（-1 = 异常无响应），非 200 时供诊断拼进报错。 */
+    static volatile int lastCtlCode = -1;
+    static volatile String lastCtlError = "";
+
     private static String ctl(String path, String method) {
         int port = Setting.getMihomoPort();
+        String m = method == null ? "GET" : method;
+        lastCtlCode = -1;
+        lastCtlError = "";
         try {
             java.net.URL url = new java.net.URL("http://127.0.0.1:" + (port + 1) + path);
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-            conn.setRequestMethod(method == null ? "GET" : method);
+            conn.setRequestMethod(m);
             conn.setRequestProperty("Authorization", "Bearer webhtv");
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(30000);
+            // PUT/POST 必须带合法 body，否则 mihomo 拒绝（415/405）→ 被误判成「无响应」
+            if ("PUT".equals(m) || "POST".equals(m)) {
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json");
+                byte[] body = m.equals("PUT") && path.equals("/configs")
+                        ? "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                        : new byte[0];
+                conn.getOutputStream().write(body);
+            }
             int code = conn.getResponseCode();
-            if (code != 200) return "";
+            if (code != 200) {
+                // 保留非 200 响应码 + 响应体, 下次排查直接看到 401/405/415 而不是空串
+                lastCtlCode = code;
+                try (java.io.InputStream es = conn.getErrorStream()) {
+                    if (es != null) lastCtlError = new String(es.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                } catch (Exception ignored) {
+                }
+                return "";
+            }
             try (BufferedReader r = new BufferedReader(
                     new InputStreamReader(conn.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                 StringBuilder sb = new StringBuilder();
@@ -625,6 +649,7 @@ public final class MihomoManager {
                 return sb.toString();
             }
         } catch (Exception e) {
+            lastCtlError = String.valueOf(e);
             return "";
         }
     }
@@ -807,7 +832,12 @@ public final class MihomoManager {
             return "配置重载失败：内核未运行";
         }
         String resp = ctl("/configs", "PUT");
-        if (resp.isEmpty()) return "配置重载失败：内核控制接口无响应";
+        if (resp.isEmpty()) {
+            return "配置重载失败：内核控制接口无响应 (HTTP " + lastCtlCode + " " + lastCtlError + ")";
+        }
+        // 重载后内核重新初始化需片刻，等端口稳定再报成功，避免误报
+        long deadline = System.currentTimeMillis() + 3000;
+        while (!isRunning(context) && System.currentTimeMillis() < deadline) sleep(100);
         return isRunning(context) ? null
                 : "配置重载后内核未监听端口 " + Setting.getMihomoPort();
     }
