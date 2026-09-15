@@ -205,21 +205,45 @@ public class MihomoSourceDialog {
         });
     }
 
-    /** 全节点真测速（并行对每个叶子节点做真实握手延迟）。 */
+    /** 全节点真测速（并行对每个叶子节点做真实握手延迟）。
+     * 结果分成功/失败两段：成功数=能拿到延迟的节点；失败节点弹明细（带 HTTP 码/原因）。 */
     private void onTest() {
         setBusy(true, "正在测速…");
         EXECUTOR.execute(() -> {
             ensureRunning();
-            int ok = MihomoManager.testLatencyAll(ctx(), s -> {
+            MihomoManager.DelayReport report = MihomoManager.testLatencyAll(ctx(), s -> {
                 MAIN.post(() -> statusText.setText(s));
             });
             MAIN.post(() -> {
                 setBusy(false, "");
                 refreshStatus();
-                if (ok <= 0) Notify.show(activity.getString(R.string.dialog_mihomo_auto_fail));
-                else Notify.show(activity.getString(R.string.dialog_mihomo_nodes_count_tested, ok, ok));
+                if (report.okCount == 0) {
+                    Notify.show(activity.getString(R.string.dialog_mihomo_auto_fail));
+                } else {
+                    Notify.show(activity.getString(R.string.dialog_mihomo_test_summary,
+                            report.results.size(), report.okCount, report.failCount));
+                }
+                // 有失败节点就弹明细（节点名 + HTTP 码/原因），区分"接口错"还是"节点真不通"
+                java.util.List<MihomoManager.DelayResult> fails = new java.util.ArrayList<>();
+                for (MihomoManager.DelayResult r : report.results) {
+                    if (!r.ok) fails.add(r);
+                }
+                if (!fails.isEmpty()) showDelayFailures(fails);
             });
         });
+    }
+
+    /** 测速失败明细（最多列 20 条，防止 47 个全失败刷屏）。 */
+    private void showDelayFailures(java.util.List<MihomoManager.DelayResult> fails) {
+        StringBuilder sb = new StringBuilder();
+        int limit = Math.min(fails.size(), 20);
+        for (int i = 0; i < limit; i++) sb.append(fails.get(i).brief()).append('\n');
+        if (fails.size() > limit) sb.append("… 另 ").append(fails.size() - limit).append(" 个失败");
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
+                .setTitle(R.string.dialog_mihomo_test_fail_title)
+                .setMessage(sb.toString())
+                .setNeutralButton(R.string.dialog_negative, null)
+                .show();
     }
 
     /** 自动选最快节点（延迟最低；刚点过测速会复用结果，否则现场并行测一遍）。 */

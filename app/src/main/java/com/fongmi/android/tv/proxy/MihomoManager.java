@@ -956,48 +956,148 @@ public final class MihomoManager {
         return out;
     }
 
-    /** 最近一次节点测速失败的 HTTP 码/响应（诊断用；成功时复位）。 */
-    static volatile int lastDelayCode = -1;
-    static volatile String lastDelayError = "";
+    // ---------------------------------------------------------------- 节点测速
 
-    /** 测速目标（经节点直连的站点，返回 204 且轻量，Clash 系标准 test-url）。 */
-    private static final String DELAY_TEST_URL = "https://www.gstatic.com/generate_204";
+    /** 单个节点测速结果(含成功/失败原因, 供 UI 展示 + 后续自动选择)。 */
+    public static final class DelayResult {
+        public final String name;
+        public final int delay;        // 毫秒；失败为 -1
+        public final int httpCode;     // 2xx 成功为 200/其它, 网络异常为 -1
+        public final String error;     // 非 2xx 时内核返回体/异常串(截断保存)
+        public final boolean ok;
 
-    /** 对指定 group 全节点测速, 返回毫秒（<0 失败）。 */
-    public static int delayFor(Context context, String group) {
-        return delayFor(context, group, 5000);
+        DelayResult(String name, int delay, int httpCode, String error) {
+            this.name = name;
+            this.delay = delay;
+            this.httpCode = httpCode;
+            this.error = error == null ? "" : error;
+            this.ok = delay >= 0;
+        }
+
+        /** 一行摘要，方便 UI 列表显示(不刷屏)：成功显示 "节点A 183ms"，失败显示 "节点B 503"。 */
+        public String brief() {
+            return ok ? (name + " " + delay + "ms")
+                    : (name + " " + (httpCode >= 0 ? ("HTTP " + httpCode) : "网络异常") + error.isEmpty() ? "" : " " + error);
+        }
     }
 
+    /** 测速目标(经节点直连的站点, 返回 204 且轻量, Clash 系标准 test-url)。 */
+    private static final String DELAY_TEST_URL = "https://www.gstatic.com/generate_204";
+
+    /** 全节点测速结果(按提交顺序；成功+失败都在)。 */
+    public static class DelayReport {
+        public final List<DelayResult> results;
+        public final int okCount;
+        public final int failCount;
+        DelayReport(List<DelayResult> results, int okCount, int failCount) {
+            this.results = results;
+            this.okCount = okCount;
+            this.failCount = failCount;
+        }
+    }
+
+    /**
+     * 并行真测速：所有叶子节点 8 并发各测一次, 每节点独立保存结果(不共享全局 volatile)。
+     * 单节点 3s 超时, 总等待 90s 兜底(极端 47 节点 8 并发 = 6 批 × 3s = 18s, 留够余量)。
+     * 进度回调: "测速 12/47"。
+     * 返回 DelayReport(失败节点也在 results 里, 供 UI 逐条显示失败原因)。
+     */
+    public static DelayReport testLatencyAll(Context context, java.util.function.Consumer<String> progress) {
+        List<ProxyInfo> leaves = listLeaves(context);
+        if (leaves.isEmpty()) return new DelayReport(new java.util.ArrayList<>(), 0, 0);
+        int n = leaves.size();
+        int parallel = Math.min(8, n);
+        ExecutorService pool = Executors.newFixedThreadPool(parallel, r -> {
+            Thread t = new Thread(r, "mihomo-delay");
+            t.setDaemon(true);
+            return t;
+        });
+        List<DelayResult> results = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger okCount = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(n);
+        for (ProxyInfo p : leaves) {
+            final String name = p.name;
+            pool.execute(() -> {
+                DelayResult r;
+                try {
+                    r = delayFor(context, name, 3000);
+                    if (r.ok) okCount.incrementAndGet();
+                } catch (Exception e) {
+                    r = new DelayResult(name, -1, -1, String.valueOf(e));
+                }
+                results.add(r);
+                if (progress != null) progress.accept("测速 " + done.incrementAndGet() + "/" + n);
+                latch.countDown();
+            });
+        }
+        try {
+            latch.await(120, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException ignored) {
+        }
+        pool.shutdown();
+        LAST_REPORT = new DelayReport(results, okCount.get(), n - okCount.get());
+        return LAST_REPORT;
+    }
+
+    /** 最近一次并行测速的完整报告(供 autoSelect 复用, 避免重复测)。 */
+    private static volatile DelayReport LAST_REPORT;
+
     /** 测单个 proxy/group 的真实握手延迟。
-     * mihomo 源码 hub/route/proxies.go 实证：
+     * mihomo 源码 hub/route/proxies.go 实证:
      *   GET /proxies/{name}/delay?url=<测速目标>&timeout=<毫秒>
-     * 注意：方法是 GET（不是 POST）、参数在 query、timeout 单位是毫秒、路径里没有数字。
-     * url 不传/传空 → 内核 503「An error occurred in the delay test」。 */
-    static int delayFor(Context context, String name, int timeoutMs) {
-        if (!isRunning(context)) return -1;
-        lastDelayCode = -1;
-        lastDelayError = "";
+     * 注意: 方法是 GET(不是 POST)、参数在 query、timeout 单位是毫秒、路径里没有数字。
+     * url 不传/传空 → 内核 503 "An error occurred in the delay test"。
+     * 失败时 httpCode 保留 404/503/504, 或 -1 表示网络层异常(连接不上 ext-ctl)。 */
+    static DelayResult delayFor(Context context, String name, int timeoutMs) {
+        if (!isRunning(context)) return new DelayResult(name, -1, -1, "内核未运行");
         int timeout = Math.max(1, timeoutMs);
         String path = "/proxies/" + urlEncode(name)
                 + "/delay?url=" + urlEncode(DELAY_TEST_URL)
                 + "&timeout=" + timeout;
-        String resp = ctl(path, "GET");
-        if (resp.isEmpty()) {
-            lastDelayCode = lastCtlCode;
-            lastDelayError = lastCtlError;
-            return -1;
+        int code = -1;
+        String body = "";
+        try {
+            java.net.URL u = new java.net.URL("http://127.0.0.1:" + (Setting.getMihomoPort() + 1) + path);
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", "Bearer webhtv");
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(Math.max(5000, timeout + 5000)); // 超时比内核多留 5s 余量
+            code = conn.getResponseCode();
+            if (code >= 200 && code < 300) {
+                try (java.io.InputStream in = conn.getInputStream()) {
+                    body = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                }
+            } else {
+                try (java.io.InputStream es = conn.getErrorStream()) {
+                    if (es != null) body = new String(es.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                }
+                // 截断保存, 防止节点返回超大错误体冲垮 UI
+                if (body.length() > 120) body = body.substring(0, 120) + "…";
+                return new DelayResult(name, -1, code, body.isEmpty() ? "" : body);
+            }
+        } catch (Exception e) {
+            return new DelayResult(name, -1, code, String.valueOf(e));
         }
         try {
-            com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(resp);
+            com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(body);
             com.google.gson.JsonObject o = root.getAsJsonObject();
-            if (!o.has("delay") || o.get("delay").isJsonNull()) return -1;
-            return o.get("delay").getAsInt();
+            if (!o.has("delay") || o.get("delay").isJsonNull()) {
+                return new DelayResult(name, -1, code, "delay 字段缺失");
+            }
+            int delay = o.get("delay").getAsInt();
+            if (delay < 0 || delay >= 65535) {
+                // 内核约定: 65535 或 -1 表示超时/失败(URLTest 返回 0 时内核走 503, 这里兜底)
+                return new DelayResult(name, -1, code, "delay=" + delay + " 视为失败");
+            }
+            return new DelayResult(name, delay, code, "");
         } catch (Exception e) {
-            return -1;
+            return new DelayResult(name, -1, code, "JSON 解析失败: " + e);
         }
     }
 
-    /** 真实节点（叶子 proxy，排除组容器和 DIRECT/REJECT），供测速/选择用。 */
+    /** 真实节点(叶子 proxy, 排除组容器和 DIRECT/REJECT), 供测速/选择用。 */
     static List<ProxyInfo> listLeaves(Context context) {
         List<ProxyInfo> all = listProxies(context);
         List<ProxyInfo> out = new java.util.ArrayList<>();
@@ -1011,50 +1111,9 @@ public final class MihomoManager {
     }
 
     /**
-     * 并行真测速：对所有叶子节点 8 并发各测一次真实握手延迟（每节点 3s 超时），
-     * 进度回调 "测速 12/43"。返回测得延迟的节点数（0 = 全部失败或未运行）。
-     */
-    public static int testLatencyAll(Context context, java.util.function.Consumer<String> progress) {
-        List<ProxyInfo> leaves = listLeaves(context);
-        if (leaves.isEmpty()) return 0;
-        int n = leaves.size();
-        int parallel = Math.min(8, n);
-        ExecutorService pool = Executors.newFixedThreadPool(parallel, r -> {
-            Thread t = new Thread(r, "mihomo-delay");
-            t.setDaemon(true);
-            return t;
-        });
-        java.util.concurrent.ConcurrentHashMap<String, Integer> delays = new java.util.concurrent.ConcurrentHashMap<>();
-        java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
-        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(n);
-        for (ProxyInfo p : leaves) {
-            pool.execute(() -> {
-                int d;
-                try {
-                    d = delayFor(context, p.name, 3000);
-                } catch (Exception e) {
-                    d = -1;
-                }
-                if (d >= 0) delays.put(p.name, d);
-                if (progress != null) progress.accept("测速 " + done.incrementAndGet() + "/" + n);
-                latch.countDown();
-            });
-        }
-        try {
-            latch.await(90, java.util.concurrent.TimeUnit.SECONDS);
-        } catch (InterruptedException ignored) {
-        }
-        pool.shutdown();
-        LAST_DELAYS = delays;
-        return delays.size();
-    }
-
-    /** 最近一次并行测速的结果（供 autoSelect 复用，避免重复测）。 */
-    private static volatile java.util.concurrent.ConcurrentHashMap<String, Integer> LAST_DELAYS;
-
-    /**
-     * 自动选最优节点：对所有真实节点（叶子）取最近一次并行测速结果，选延迟最低者，
-     * PUT 进 PROXY 组。若没有可复用的测速结果则先跑一次 testLatencyAll。
+     * 自动选最优节点：从最近一次并行测速结果里挑延迟最低的成功节点,
+     * PUT 进 PROXY 组。没有可复用结果则先跑一次 testLatencyAll。
+     * 只从 ok 节点里选(失败节点 delay=-1 不参与比较)。
      * 返回选中的节点名；无节点/全失败返回 ""。
      *
      * <p>修复：旧实现测速列表里含 DIRECT（本地直连），其延迟恒为 0 最低，
@@ -1062,18 +1121,18 @@ public final class MihomoManager {
      */
     public static String autoSelect(Context context, java.util.function.Consumer<String> progress) {
         if (!isRunning(context)) return "";
-        // 有刚测过的延迟结果就复用；否则现场并行测一遍
-        if (LAST_DELAYS == null || LAST_DELAYS.isEmpty()) {
+        // 有刚测过的完整报告就复用；否则现场并行测一遍
+        if (LAST_REPORT == null || LAST_REPORT.results.isEmpty()) {
             testLatencyAll(context, progress);
         }
-        java.util.concurrent.ConcurrentHashMap<String, Integer> delays = LAST_DELAYS;
-        if (delays == null || delays.isEmpty()) return "";
+        DelayReport report = LAST_REPORT;
+        if (report == null || report.okCount == 0) return "";
         String bestNode = "";
         int bestDelay = Integer.MAX_VALUE;
-        for (java.util.Map.Entry<String, Integer> e : delays.entrySet()) {
-            if (e.getValue() >= 0 && e.getValue() < bestDelay) {
-                bestDelay = e.getValue();
-                bestNode = e.getKey();
+        for (DelayResult r : report.results) {
+            if (r.ok && r.delay < bestDelay) {
+                bestDelay = r.delay;
+                bestNode = r.name;
             }
         }
         if (bestNode.isEmpty()) return "";

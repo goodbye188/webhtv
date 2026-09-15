@@ -200,6 +200,8 @@
     <string name="dialog_mihomo_nodes_count_tested">共 %1$d 个节点 · 已测 %2$d</string>
     <string name="dialog_mihomo_auto_done">已选最快节点：%1$s</string>
     <string name="dialog_mihomo_auto_fail">暂无节点（未运行或订阅未更新）</string>
+    <string name="dialog_mihomo_test_summary">共测 %1$d · 成功 %2$d · 失败 %3$d</string>
+    <string name="dialog_mihomo_test_fail_title">测速失败明细</string>
     <string name="dialog_mihomo_nodes_empty">暂无节点（未运行或订阅未更新）</string>
     <string name="dialog_mihomo_started">代理已启动</string>
     <string name="dialog_mihomo_stop">停止</string>

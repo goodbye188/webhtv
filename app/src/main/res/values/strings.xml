@@ -202,6 +202,8 @@
     <string name="dialog_mihomo_nodes_count_tested">%1$d nodes · %2$d tested</string>
     <string name="dialog_mihomo_auto_done">Fastest node selected: %1$s</string>
     <string name="dialog_mihomo_auto_fail">No nodes (not running or subscription not updated)</string>
+    <string name="dialog_mihomo_test_summary">%1$d tested · %2$d ok · %3$d failed</string>
+    <string name="dialog_mihomo_test_fail_title">Delay test failures</string>
     <string name="dialog_mihomo_nodes_empty">No nodes (not running or subscription not updated)</string>
     <string name="dialog_mihomo_started">Proxy started</string>
     <string name="dialog_mihomo_kernel_missing">Proxy not ready. Tap "Download proxy" first.</string>
