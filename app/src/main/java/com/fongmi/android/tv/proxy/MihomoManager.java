@@ -901,9 +901,11 @@ public final class MihomoManager {
         }
     }
 
-    /** 把内核状态文本化（供设置卡片/弹窗显示）。去内部术语，只露开关级状态。 */
+    /** 把内核状态文本化（供设置卡片/弹窗显示）。去内部术语，只露开关级状态。
+     * 用 isRunning(context)（含 probeRemoteMihomo 远端接管探测）：app 重启/换进程后
+     * 本进程句柄 PROCESS 为 null，但内核还活着，旧口径会误报「未启动」。 */
     public static String statusText(Context context) {
-        if (!isRunning()) return "未启动";
+        if (!isRunning(context)) return "未启动";
         String p = currentProxy(context);
         return p.isEmpty() ? "运行中" : "运行中 · 节点 " + p;
     }

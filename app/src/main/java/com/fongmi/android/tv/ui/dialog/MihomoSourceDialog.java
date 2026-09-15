@@ -107,18 +107,18 @@ public class MihomoSourceDialog {
         return activity.getApplicationContext();
     }
 
-    /** 刷新状态行：内核真实运行状态 + 节点数（后台拉 ext-ctl，避免卡 UI）。 */
+    /** 刷新状态行：内核真实运行状态 + 节点数。
+     * isRunning(ctx()) 含 ext-ctl HTTP 探测（HttpURLConnection），主线程调用必抛
+     * NetworkOnMainThreadException 被 ctl() 吞掉 → 永远误判"未启动"。所以整条探测
+     * 放后台线程执行，只把结果 post 回主线程写 TextView。 */
     private void refreshStatus() {
-        boolean running = MihomoManager.isRunning(ctx());
-        if (!running) {
-            statusText.setText(activity.getString(R.string.dialog_mihomo_status_idle));
-            return;
-        }
         EXECUTOR.execute(() -> {
-            int n = MihomoManager.nodeCount(ctx());
+            boolean running = MihomoManager.isRunning(ctx());
+            int n = running ? MihomoManager.nodeCount(ctx()) : 0;
             MAIN.post(() -> {
                 if (dialog == null || !dialog.isShowing()) return;
-                if (n > 0) statusText.setText(activity.getString(R.string.dialog_mihomo_nodes_count, n));
+                if (!running) statusText.setText(activity.getString(R.string.dialog_mihomo_status_idle));
+                else if (n > 0) statusText.setText(activity.getString(R.string.dialog_mihomo_nodes_count, n));
                 else statusText.setText(activity.getString(R.string.dialog_mihomo_nodes_empty));
             });
         });
