@@ -37,6 +37,9 @@ jobs:
 
       - name: 安装 Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # 旧 'tools' 包已从 Google 仓库移除(deprecated, 由 cmdline-tools 替代), 不能默认安装
+          packages: "cmdline-tools platform-tools"
 
       - name: 安装 Android 组件
         run: |
