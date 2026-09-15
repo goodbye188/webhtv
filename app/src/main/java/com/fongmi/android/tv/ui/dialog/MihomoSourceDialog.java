@@ -149,22 +149,33 @@ public class MihomoSourceDialog {
         setBusy(true, "正在更新订阅…");
         EXECUTOR.execute(() -> {
             String err = MihomoManager.updateSubscription(ctx(), url);
+            String startErr = null;
+            if (err == null) {
+                // 订阅写入成功后让内核生效：运行中则重载新 config，没运行则直接拉起
+                startErr = MihomoManager.reloadOrStart(ctx());
+            }
             MAIN.post(() -> {
                 setBusy(false, "");
                 refreshStatus();
                 if (err != null) Notify.show(err);
-                else Notify.show("订阅已更新");
+                else if (startErr != null) Notify.show("订阅已保存，" + startErr);
+                else Notify.show("订阅已更新，内核已重载");
             });
         });
     }
 
     private void onAuto() {
-        if (!MihomoManager.isRunning()) {
-            Notify.show(activity.getString(R.string.dialog_mihomo_auto_fail));
-            return;
-        }
         setBusy(true, "正在自动测速选节点…");
         EXECUTOR.execute(() -> {
+            ensureRunning();
+            if (!MihomoManager.isRunning()) {
+                MAIN.post(() -> {
+                    setBusy(false, "");
+                    Notify.show(activity.getString(R.string.dialog_mihomo_auto_fail));
+                    refreshStatus();
+                });
+                return;
+            }
             String node = MihomoManager.autoSelect(ctx(), name -> {
                 MAIN.post(() -> statusText.setText("测速中: " + name));
             });
@@ -177,22 +188,35 @@ public class MihomoSourceDialog {
         });
     }
 
+    /** 确保内核在跑：没跑且内核二进制（或内置资产）就绪就拉起来。后台线程调用。 */
+    private void ensureRunning() {
+        if (MihomoManager.isRunning()) return;
+        if (!MihomoManager.isInstalled(ctx()) && !MihomoManager.hasEmbedded(ctx())) return;
+        MihomoManager.ensureKernel(ctx(), null);
+        MihomoManager.start(ctx());
+    }
+
     private void onNodes() {
-        if (!MihomoManager.isRunning()) {
-            Notify.show(activity.getString(R.string.dialog_mihomo_nodes_empty));
-            return;
-        }
-        List<MihomoManager.ProxyInfo> proxies = MihomoManager.listProxies(ctx());
-        if (proxies == null || proxies.isEmpty()) {
-            Notify.show(activity.getString(R.string.dialog_mihomo_nodes_empty));
-            return;
-        }
-        // 列表: 组在前(可整组切换), 节点在后(可手动单选)。点节点 = 选它所在的组 + 它
-        StringBuilder items = new StringBuilder();
+        setBusy(true, "正在读取节点…");
+        EXECUTOR.execute(() -> {
+            ensureRunning();
+            List<MihomoManager.ProxyInfo> proxies = MihomoManager.listProxies(ctx());
+            MAIN.post(() -> {
+                setBusy(false, "");
+                refreshStatus();
+                if (proxies == null || proxies.isEmpty()) {
+                    Notify.show(activity.getString(R.string.dialog_mihomo_nodes_empty));
+                    return;
+                }
+                showNodesList(proxies);
+            });
+        });
+    }
+
+    /** 节点列表弹窗：组在前(可整组切换), 节点在后(可手动单选)。点节点 = 选它所在的组 + 它。 */
+    private void showNodesList(List<MihomoManager.ProxyInfo> proxies) {
         List<String> names = new ArrayList<>();
         for (MihomoManager.ProxyInfo p : proxies) {
-            String label = p.name + (p.isGroup ? "  ⚙" : "");
-            items.append(label).append('\n');
             names.add(p.name);
         }
         final String[] finalNames = names.toArray(new String[0]);

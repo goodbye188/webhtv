@@ -60,15 +60,22 @@ public final class MihomoManager {
 
     // ---------------------------------------------------------------- binary
 
-    /** mihomo 可执行文件（不存在则未下载）。 */
+    /**
+     * mihomo 可执行文件。优先用系统安装时自动解包并赋执行权限的
+     * {@code nativeLibraryDir/libmihomo.so}（装完即用，零拷贝零下载，star-fall 同款方案）；
+     * 没有该 .so（如 v7a 包）时回退到 filesDir/proxy/mihomo（assets 内置或网络下载）。
+     */
     public static File binary(Context context) {
+        String nld = context.getApplicationInfo().nativeLibraryDir;
+        File so = new File(nld, "libmihomo.so");
+        if (so.exists() && so.length() > 10_000_000L) return so;
         return new File(context.getFilesDir(), "proxy/mihomo");
     }
 
     /** 内置内核资产（assets/mihomo/mihomo，按 ABI flavor 内置对应架构，未压缩 ELF 直接拷出）。 */
     private static final String ASSET_KERNEL = "mihomo/mihomo";
 
-    /** APK 里是否内置了内核二进制。 */
+    /** APK 里是否内置了内核资产（仅 v7a 等无 .so 的包走这条拷出路径）。 */
     public static boolean hasEmbedded(Context context) {
         try {
             context.getAssets().open(ASSET_KERNEL).close();
@@ -407,7 +414,8 @@ public final class MihomoManager {
         File bin = binary(context);
         // -d 指定可写工作目录：mihomo 启动时会对 homeDir 做 config.Init（MkdirAll + 建 config.yaml），
         // 不传则用默认目录，Android 上不可写 → Fatal 秒退 → 端口不监听。
-        File homeDir = bin.getParentFile();
+        // 固定用 filesDir/proxy（可写）：bin 可能来自 nativeLibraryDir（只读解包目录），不能用它的 parent。
+        File homeDir = new File(context.getFilesDir(), "proxy");
         if (!homeDir.exists() && !homeDir.mkdirs()) homeDir = context.getFilesDir();
         try {
             ProcessBuilder pb = new ProcessBuilder(
@@ -448,6 +456,17 @@ public final class MihomoManager {
     public static String restart(Context context) {
         stop();
         sleep(300);
+        return start(context);
+    }
+
+    /**
+     * 订阅/config 变更后的幂等动作：内核已运行 → 重载新配置；未运行 → 直接启动。
+     * 返回 null 成功；否则为失败原因（用于 toast 提示）。
+     */
+    public static String reloadOrStart(Context context) {
+        if (isRunning()) {
+            return reloadConfig(context);
+        }
         return start(context);
     }
 
