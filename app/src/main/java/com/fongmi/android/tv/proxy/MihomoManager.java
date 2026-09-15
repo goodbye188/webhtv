@@ -15,7 +15,9 @@ import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -531,7 +533,7 @@ public final class MihomoManager {
         }
     }
 
-    /** 更新订阅：拉取订阅 → 改写端口/控制器 → 写 config.yaml。不依赖内核、不启动任何东西。 */
+    /** 更新订阅：拉取订阅 → 识别内容类型（clash YAML 直接改写 / vless:// 行列表转 YAML）→ 写 config.yaml。 */
     public static String updateSubscription(Context context, String url) {
         if (TextUtils.isEmpty(url)) return "订阅地址为空";
         try {
@@ -540,9 +542,18 @@ public final class MihomoManager {
                 if (!res.isSuccessful()) return "订阅拉取失败: HTTP " + res.code();
                 data = res.body().bytes();
             }
-            String raw = new String(data, java.nio.charset.StandardCharsets.UTF_8);
+            String raw = new String(data, java.nio.charset.StandardCharsets.UTF_8).trim();
             int port = Setting.getMihomoPort();
-            String normalized = normalizeConfig(raw, port, port + 1);
+            String normalized;
+            if (isVlessLines(raw)) {
+                // 订阅是 vless:// 节点行列表（可能 base64 编码）：内核只吃 clash YAML，先转换
+                String decoded = maybeDecodeBase64(raw);
+                normalized = buildConfigFromVless(decoded, port, port + 1, true);
+                if (normalized == null) return "订阅解析失败：未找到有效的 vless:// 节点";
+            } else {
+                // 订阅本身就是 clash YAML config：按原逻辑改写受控键
+                normalized = normalizeConfig(maybeDecodeBase64(raw), port, port + 1);
+            }
             File cfg = configFile(context);
             try (FileOutputStream out = new FileOutputStream(cfg)) {
                 out.write(normalized.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -551,6 +562,143 @@ public final class MihomoManager {
         } catch (Exception e) {
             return "订阅拉取失败: " + e.getMessage();
         }
+    }
+
+    /** 原始文本里是否含 vless:// 节点行（含 base64 解码后的情况）。 */
+    static boolean isVlessLines(String raw) {
+        if (raw == null) return false;
+        if (raw.contains("vless://")) return true;
+        String decoded = maybeDecodeBase64(raw);
+        return decoded != null && decoded.contains("vless://");
+    }
+
+    /** 看起来像 base64（且不含 YAML 结构）则解码；失败原样返回。 */
+    private static String maybeDecodeBase64(String raw) {
+        if (raw == null) return null;
+        String s = raw.replaceAll("\\s", "");
+        if (s.length() < 32 || !s.matches("[A-Za-z0-9+/]+={0,2}")) return raw;
+        try {
+            String out = new String(java.util.Base64.getMimeDecoder().decode(s),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            if (out.contains("vless://") || out.contains("proxies:")) return out;
+        } catch (Exception ignored) {
+        }
+        return raw;
+    }
+
+    /** 从 vless:// 行列表生成完整 clash YAML。返回 null 表示没有可解析的节点。 */
+    static String buildConfigFromVless(String text, int port, int ctlPort, boolean withEch) {
+        List<String[]> nodes = new ArrayList<>(); // {name, host, port, paramsCsv, uuid}
+        for (String line : text.split("\\r?\\n")) {
+            String l = line.trim();
+            if (!l.startsWith("vless://")) continue;
+            String[] p = parseVless(l);
+            if (p != null) nodes.add(p);
+        }
+        if (nodes.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("proxies:\n");
+        List<String> names = new ArrayList<>();
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (String[] n : nodes) {
+            String name = n[0], host = n[1], pport = n[2], uuid = n[4];
+            // mihomo 要求 proxy name 全局唯一：订阅里同地区节点常同名，重名时附 host 区分
+            if (!used.add(name)) {
+                name = name + " " + host;
+                used.add(name);
+                n[0] = name;
+            }
+            String query = n[3];
+            Map<String, String> q = new HashMap<>();
+            for (String pair : query.split("&")) {
+                int eq = pair.indexOf('=');
+                if (eq <= 0) continue;
+                q.put(pair.substring(0, eq).trim(), unquote(pair.substring(eq + 1)));
+            }
+            boolean tls = "tls".equals(q.get("security"));
+            sb.append("- name: ").append(yamlQuote(name)).append('\n');
+            sb.append("  type: vless\n");
+            sb.append("  server: ").append(host).append('\n');
+            sb.append("  port: ").append(pport).append('\n');
+            sb.append("  uuid: ").append(uuid).append('\n');
+            String net = q.get("type");
+            if (net != null && !"tcp".equals(net)) sb.append("  network: ").append(net).append('\n');
+            if (tls) {
+                sb.append("  tls: true\n");
+                String sni = q.get("sni");
+                if (sni == null || sni.isEmpty()) sni = q.get("host");
+                if (sni != null && !sni.isEmpty()) sb.append("  servername: ").append(sni).append('\n');
+                String fp = q.get("fp");
+                if (fp != null && !fp.isEmpty()) sb.append("  fingerprint: ").append(fp).append('\n');
+                String enc = q.get("encryption");
+                if (enc != null && !enc.isEmpty() && !"none".equals(enc)) sb.append("  encryption: ").append(enc).append('\n');
+                String ech = q.get("ech");
+                if (withEch && ech != null && !ech.isEmpty()) {
+                    sb.append("  ech-opts:\n");
+                    sb.append("    enable: true\n");
+                    int plus = ech.indexOf('+');
+                    sb.append("    query-server-name: ")
+                            .append(plus > 0 ? ech.substring(0, plus) : ech).append('\n');
+                }
+            }
+            if ("ws".equals(net)) {
+                sb.append("  ws-opts:\n");
+                sb.append("    path: ").append(yamlQuote(q.get("path") == null ? "/" : q.get("path"))).append('\n');
+                String wshost = q.get("host");
+                if (wshost != null && !wshost.isEmpty()) {
+                    sb.append("    headers:\n");
+                    sb.append("      Host: ").append(wshost).append('\n');
+                }
+            }
+            sb.append("  udp: true\n");
+            names.add(name);
+        }
+        sb.append("proxy-groups:\n");
+        sb.append("- name: PROXY\n");
+        sb.append("  type: select\n");
+        sb.append("  proxies:\n");
+        for (String n : names) sb.append("  - ").append(yamlQuote(n)).append('\n');
+        sb.append("  - DIRECT\n");
+        sb.append("mixed-port: ").append(port).append('\n');
+        sb.append("external-controller: 127.0.0.1:").append(ctlPort).append('\n');
+        sb.append("secret: webhtv\n");
+        sb.append("allow-lan: false\n");
+        sb.append("mode: rule\n");
+        sb.append("dns:\n");
+        sb.append("  servers: [\"system\", \"8.8.8.8\", \"1.1.1.1\"]\n");
+        sb.append("rules:\n");
+        sb.append("- MATCH,PROXY\n");
+        return sb.toString();
+    }
+
+    /**
+     * 解析 vless://uuid@host:port?params#name → [name, host, port, paramsCsv, uuid]。
+     * 解析不出返回 null。
+     */
+    static String[] parseVless(String line) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("vless://([0-9a-fA-F][0-9a-fA-F\\-]{0,35})@([^:/?]+):(\\d+)\\?([^#]+)(?:#(.+))?$")
+                .matcher(line.trim());
+        if (!m.find()) return null;
+        String uuid = m.group(1), host = m.group(2), port = m.group(3), query = m.group(4);
+        String name = m.group(5);
+        if (name == null) name = "vless-" + host;
+        name = unquote(name);
+        return new String[]{name, host, port, query, uuid};
+    }
+
+    private static String unquote(String s) {
+        if (s == null) return null;
+        try {
+            return java.net.URLDecoder.decode(s, "UTF-8");
+        } catch (Exception e) {
+            return s;
+        }
+    }
+
+    private static String yamlQuote(String s) {
+        // YAML 单引号字符串里单引号要双写转义
+        return "'" + (s == null ? "" : s.replace("'", "''")) + "'";
     }
 
     /** ext-ctl 重载当前 config。 */
