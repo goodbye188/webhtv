@@ -95,8 +95,10 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     }
 
     private void setMihomoText() {
-        // 对齐星落：设置页只露开关级状态（关/开），不显示内核内部状态
-        mBinding.mihomoText.setText(Setting.isMihomoEnabled()
+        // 对齐星落：设置页只露开关级状态（关/开），但状态 = 内核真实运行状态，
+        // 内核没跑就显示「关」，不再因为上次开过就一直假显示开
+        boolean running = com.fongmi.android.tv.proxy.MihomoManager.isRunning(getRoot());
+        mBinding.mihomoText.setText(running
                 ? getString(R.string.dialog_mihomo_status_on)
                 : getString(R.string.dialog_mihomo_status_off));
     }

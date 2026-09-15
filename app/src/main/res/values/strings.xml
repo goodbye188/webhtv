@@ -204,6 +204,7 @@
     <string name="dialog_mihomo_auto_fail">No nodes (not running or subscription not updated)</string>
     <string name="dialog_mihomo_nodes_empty">No nodes (not running or subscription not updated)</string>
     <string name="dialog_mihomo_started">Proxy started</string>
+    <string name="dialog_mihomo_kernel_missing">Proxy not ready. Tap "Download proxy" first.</string>
     <string name="dialog_mihomo_stop">Stop</string>
     <string name="setting_ai">AI services</string>
     <string name="setting_ai_group_recommendation">Recommendations</string>

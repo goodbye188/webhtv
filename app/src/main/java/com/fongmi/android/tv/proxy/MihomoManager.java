@@ -377,10 +377,19 @@ public final class MihomoManager {
 
     // ---------------------------------------------------------------- process
 
-    /** 内核是否运行中。 */
+    /** 内核是否运行中（仅看本进程内的子进程句柄，app 重启后为 false）。 */
     public static boolean isRunning() {
         Process p = PROCESS.get();
         return p != null && p.isAlive() && isPortOpen(Setting.getMihomoPort());
+    }
+
+    /**
+     * 内核是否真实运行中（含 app 重启后接管的远端实例：端口在监听且 ext-ctl 带
+     * secret=webhtv 应答）。UI 的开关/状态一律以此为准，避免"开关开着但内核早死了"。
+     */
+    public static boolean isRunning(Context context) {
+        if (isRunning()) return true;
+        return probeRemoteMihomo();
     }
 
     /**
@@ -462,11 +471,11 @@ public final class MihomoManager {
     }
 
     /**
-     * 订阅/config 变更后的幂等动作：内核已运行 → 重载新配置；未运行 → 直接启动。
+     * 订阅/config 变更后的幂等动作：内核已运行（含接管远端实例）→ 重载新配置；未运行 → 直接启动。
      * 返回 null 成功；否则为失败原因（用于 toast 提示）。
      */
     public static String reloadOrStart(Context context) {
-        if (isRunning()) {
+        if (isRunning(context)) {
             return reloadConfig(context);
         }
         return start(context);
@@ -819,8 +828,13 @@ public final class MihomoManager {
 
     /** 对指定 group 全节点测速（POST /proxies/{name}/delay），返回毫秒（<0 失败）。 */
     public static int delayFor(Context context, String group) {
-        if (!isRunning()) return -1;
-        String resp = ctl("/proxies/" + urlEncode(group) + "/delay?timeout=5000", "POST");
+        return delayFor(context, group, 5000);
+    }
+
+    /** 测单个 proxy/ group 的真实握手延迟（内核本地直连节点服务器，不经任何测速网站）。 */
+    static int delayFor(Context context, String name, int timeoutMs) {
+        if (!isRunning(context)) return -1;
+        String resp = ctl("/proxies/" + urlEncode(name) + "/delay?timeout=" + timeoutMs, "POST");
         if (resp.isEmpty()) return -1;
         try {
             com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(resp);
@@ -832,58 +846,93 @@ public final class MihomoManager {
         }
     }
 
+    /** 真实节点（叶子 proxy，排除组容器和 DIRECT/REJECT），供测速/选择用。 */
+    static List<ProxyInfo> listLeaves(Context context) {
+        List<ProxyInfo> all = listProxies(context);
+        List<ProxyInfo> out = new java.util.ArrayList<>();
+        if (all == null) return out;
+        for (ProxyInfo p : all) {
+            if (p.isGroup) continue;
+            if ("DIRECT".equalsIgnoreCase(p.name) || "REJECT".equalsIgnoreCase(p.name)) continue;
+            out.add(p);
+        }
+        return out;
+    }
+
     /**
-     * 自动选最优节点：找出订阅里的真实节点分组（非 group），逐个测延迟，
-     * 选最快的那个，PUT 回该分组。返回选中的节点名；无节点/失败返回 ""。
+     * 并行真测速：对所有叶子节点 8 并发各测一次真实握手延迟（每节点 3s 超时），
+     * 进度回调 "测速 12/43"。返回测得延迟的节点数（0 = 全部失败或未运行）。
+     */
+    public static int testLatencyAll(Context context, java.util.function.Consumer<String> progress) {
+        List<ProxyInfo> leaves = listLeaves(context);
+        if (leaves.isEmpty()) return 0;
+        int n = leaves.size();
+        int parallel = Math.min(8, n);
+        ExecutorService pool = Executors.newFixedThreadPool(parallel, r -> {
+            Thread t = new Thread(r, "mihomo-delay");
+            t.setDaemon(true);
+            return t;
+        });
+        java.util.concurrent.ConcurrentHashMap<String, Integer> delays = new java.util.concurrent.ConcurrentHashMap<>();
+        java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(n);
+        for (ProxyInfo p : leaves) {
+            pool.execute(() -> {
+                int d;
+                try {
+                    d = delayFor(context, p.name, 3000);
+                } catch (Exception e) {
+                    d = -1;
+                }
+                if (d >= 0) delays.put(p.name, d);
+                if (progress != null) progress.accept("测速 " + done.incrementAndGet() + "/" + n);
+                latch.countDown();
+            });
+        }
+        try {
+            latch.await(90, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException ignored) {
+        }
+        pool.shutdown();
+        LAST_DELAYS = delays;
+        return delays.size();
+    }
+
+    /** 最近一次并行测速的结果（供 autoSelect 复用，避免重复测）。 */
+    private static volatile java.util.concurrent.ConcurrentHashMap<String, Integer> LAST_DELAYS;
+
+    /**
+     * 自动选最优节点：对所有真实节点（叶子）取最近一次并行测速结果，选延迟最低者，
+     * PUT 进 PROXY 组。若没有可复用的测速结果则先跑一次 testLatencyAll。
+     * 返回选中的节点名；无节点/全失败返回 ""。
+     *
+     * <p>修复：旧实现测速列表里含 DIRECT（本地直连），其延迟恒为 0 最低，
+     * 自动会永远选中 DIRECT → 代理形同虚设。现 listLeaves 已排除 DIRECT/REJECT。
      */
     public static String autoSelect(Context context, java.util.function.Consumer<String> progress) {
-        List<ProxyInfo> proxies = listProxies(context);
-        if (proxies == null) return "";
-        // 真实节点分组：type 不是组容器（Selector/Fallback/LoadBalance/URLTest 之外的多为直连节点；
-        // 但机场一般给个 "PROVIDER_xxx" 的 Selector，我们优先挑带节点的 Selector）
-        // 简化策略：遍历所有 group（isGroup=true），对每个跑一次 delay 测速，取 delay 最小的组，
-        // 再在该组里选 delay 最小的子节点。
-        String bestGroup = "";
-        int bestGroupDelay = Integer.MAX_VALUE;
-        for (ProxyInfo p : proxies) {
-            if (!p.isGroup) continue;
-            if (progress != null) progress.accept(p.name);
-            int d = delayFor(context, p.name);
-            if (d >= 0 && d < bestGroupDelay) {
-                bestGroupDelay = d;
-                bestGroup = p.name;
-            }
+        if (!isRunning(context)) return "";
+        // 有刚测过的延迟结果就复用；否则现场并行测一遍
+        if (LAST_DELAYS == null || LAST_DELAYS.isEmpty()) {
+            testLatencyAll(context, progress);
         }
-        if (bestGroup.isEmpty()) return "";
-        // 取该 group 里的子节点（/proxies/{group} 的 "proxies" 字段是子节点名列表）
-        String resp = ctl("/proxies/" + urlEncode(bestGroup), "GET");
-        List<String> subs = new java.util.ArrayList<>();
-        try {
-            com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(resp);
-            com.google.gson.JsonElement arr = root.getAsJsonObject().get("proxies");
-            if (arr != null && arr.isJsonArray()) {
-                for (com.google.gson.JsonElement s : arr.getAsJsonArray()) subs.add(s.getAsString());
-            }
-        } catch (Exception ignored) {
-        }
-        // 逐个测子节点
-        String bestNode = bestGroup;
+        java.util.concurrent.ConcurrentHashMap<String, Integer> delays = LAST_DELAYS;
+        if (delays == null || delays.isEmpty()) return "";
+        String bestNode = "";
         int bestDelay = Integer.MAX_VALUE;
-        for (String sub : subs) {
-            if (progress != null) progress.accept(sub);
-            int d = delayFor(context, sub);
-            if (d >= 0 && d < bestDelay) {
-                bestDelay = d;
-                bestNode = sub;
+        for (java.util.Map.Entry<String, Integer> e : delays.entrySet()) {
+            if (e.getValue() >= 0 && e.getValue() < bestDelay) {
+                bestDelay = e.getValue();
+                bestNode = e.getKey();
             }
         }
-        if (!selectProxy(context, bestGroup, bestNode)) bestNode = "";
-        return bestNode;
+        if (bestNode.isEmpty()) return "";
+        if (progress != null) progress.accept("选中 " + bestNode + " (" + bestDelay + "ms)");
+        return selectProxy(context, "PROXY", bestNode) ? bestNode : "";
     }
 
     /** 在指定 group 内选某节点（PUT /proxies/{group} body={"name":...}）。 */
     public static boolean selectProxy(Context context, String group, String node) {
-        if (!isRunning()) return false;
+        if (!isRunning(context)) return false;
         try {
             java.net.URL url = new java.net.URL("http://127.0.0.1:" + (Setting.getMihomoPort() + 1) + "/proxies/" + urlEncode(group));
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();

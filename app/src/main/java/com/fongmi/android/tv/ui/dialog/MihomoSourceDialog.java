@@ -74,7 +74,8 @@ public class MihomoSourceDialog {
         autoButton = view.findViewById(R.id.autoNodeButton);
 
         subscriptionInput.setText(Setting.getMihomoSubscription());
-        enableSwitch.setChecked(Setting.isMihomoEnabled());
+        // 开关状态 = 内核真实运行状态（含 app 重启后接管的远端实例）；内核没跑就显示关，不假开
+        enableSwitch.setChecked(MihomoManager.isRunning(ctx()));
 
         // 内置缺失（v7a）才露出下载按钮；arm64 包 .so 系统解包后即内置，不显示
         downloadButton.setVisibility(MihomoManager.isInstalled(ctx()) ? View.GONE : View.VISIBLE);
@@ -100,9 +101,12 @@ public class MihomoSourceDialog {
         return activity.getApplicationContext();
     }
 
-    /** 刷新状态行：开关级状态 + 节点数（后台拉 ext-ctl，避免卡 UI）。 */
+    /** 刷新状态行：内核真实运行状态 + 节点数（后台拉 ext-ctl，避免卡 UI）。 */
     private void refreshStatus() {
-        if (!MihomoManager.isRunning()) {
+        boolean running = MihomoManager.isRunning(ctx());
+        // 开关始终反映内核真实状态：内核没跑（含远端已死）就不假装开着
+        if (enableSwitch.isChecked() != running) enableSwitch.setChecked(running);
+        if (!running) {
             statusText.setText(activity.getString(R.string.dialog_mihomo_status_idle));
             return;
         }
@@ -173,27 +177,29 @@ public class MihomoSourceDialog {
         });
     }
 
-    /** 全节点测速（ext-ctl /delay）。 */
+    /** 全节点真测速（并行对每个叶子节点做真实握手延迟）。 */
     private void onTest() {
         setBusy(true, "正在测速…");
         EXECUTOR.execute(() -> {
             ensureRunning();
-            int n = MihomoManager.testLatency(ctx());
+            int ok = MihomoManager.testLatencyAll(ctx(), s -> {
+                MAIN.post(() -> statusText.setText(s));
+            });
             MAIN.post(() -> {
                 setBusy(false, "");
                 refreshStatus();
-                if (n < 0) Notify.show(activity.getString(R.string.dialog_mihomo_nodes_empty));
-                else Notify.show(activity.getString(R.string.dialog_mihomo_nodes_count, n) + " 测速完成");
+                if (ok <= 0) Notify.show(activity.getString(R.string.dialog_mihomo_auto_fail));
+                else Notify.show(activity.getString(R.string.dialog_mihomo_nodes_count_tested, ok, ok));
             });
         });
     }
 
-    /** 自动选最快节点。 */
+    /** 自动选最快节点（延迟最低；刚点过测速会复用结果，否则现场并行测一遍）。 */
     private void onAuto() {
         setBusy(true, "正在自动测速选节点…");
         EXECUTOR.execute(() -> {
             ensureRunning();
-            if (!MihomoManager.isRunning()) {
+            if (!MihomoManager.isRunning(ctx())) {
                 MAIN.post(() -> {
                     setBusy(false, "");
                     Notify.show(activity.getString(R.string.dialog_mihomo_auto_fail));
@@ -202,7 +208,7 @@ public class MihomoSourceDialog {
                 return;
             }
             String node = MihomoManager.autoSelect(ctx(), name -> {
-                MAIN.post(() -> statusText.setText("测速中: " + name));
+                MAIN.post(() -> statusText.setText(name));
             });
             MAIN.post(() -> {
                 setBusy(false, "");
@@ -232,29 +238,28 @@ public class MihomoSourceDialog {
     }
 
     private void showNodesList(List<MihomoManager.ProxyInfo> proxies) {
+        // 只列真实节点（isGroup=false）；PROXY 组由 mihomo 自动生成，用户选节点就 PUT 进 PROXY。
+        List<MihomoManager.ProxyInfo> leaves = new ArrayList<>();
+        for (MihomoManager.ProxyInfo p : proxies) {
+            if (!p.isGroup) leaves.add(p);
+        }
+        if (leaves.isEmpty()) {
+            Notify.show(activity.getString(R.string.dialog_mihomo_nodes_empty));
+            return;
+        }
         List<String> names = new ArrayList<>();
-        for (MihomoManager.ProxyInfo p : proxies) names.add(p.name);
+        for (MihomoManager.ProxyInfo p : leaves) names.add(p.name);
         final String[] finalNames = names.toArray(new String[0]);
         new com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
                 .setTitle(R.string.dialog_mihomo_nodes)
                 .setItems(finalNames, (dlg, which) -> {
                     String name = finalNames[which];
-                    if (MihomoManager.selectProxy(ctx(), name, name)) {
+                    // 统一经 PROXY 组选：mihomo 的 PUT /proxies/{group} 只接受 group 名；
+                    // 节点是叶子，直接 PUT /proxies/{节点名} 必 404 → 旧代码报"选择失败"。
+                    if (MihomoManager.selectProxy(ctx(), "PROXY", name)) {
                         Notify.show("已选: " + name);
                     } else {
-                        List<MihomoManager.ProxyInfo> all = MihomoManager.listProxies(ctx());
-                        boolean found = false;
-                        if (all != null) {
-                            for (MihomoManager.ProxyInfo g : all) {
-                                if (!g.isGroup || g.name.equals(name)) continue;
-                                if (MihomoManager.selectProxy(ctx(), g.name, name)) {
-                                    Notify.show("已选 " + g.name + " → " + name);
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (!found) Notify.show("选择失败: " + name);
+                        Notify.show("选择失败: " + name);
                     }
                     dlg.dismiss();
                     refreshStatus();
@@ -291,33 +296,34 @@ public class MihomoSourceDialog {
             dialog.dismiss();
             return;
         }
-        // 开启：确保内核就绪（arm64 .so 系统解包即内置；缺失才走网络下载）
+        // 内核二进制缺失（v7a 未下载）：开不了，开关回弹为关
         if (!MihomoManager.isInstalled(ctx())) {
-            setBusy(true, "正在准备…");
-            EXECUTOR.execute(() -> {
-                MihomoManager.ensureKernel(ctx(), null);
-                String err = MihomoManager.start(ctx());
-                MAIN.post(() -> {
-                    setBusy(false, "");
-                    refreshStatus();
-                    if (err != null) Notify.show(err);
-                    else Notify.show(activity.getString(R.string.dialog_mihomo_started));
-                    if (dialog != null && dialog.isShowing()) dialog.dismiss();
-                });
-            });
+            enableSwitch.setChecked(false);
+            Notify.show(activity.getString(R.string.dialog_mihomo_kernel_missing));
+            refreshStatus();
             return;
         }
-        if (!MihomoManager.isRunning()) {
-            EXECUTOR.execute(() -> {
-                String err = MihomoManager.start(ctx());
-                MAIN.post(() -> {
-                    refreshStatus();
-                    if (err != null) Notify.show(err);
-                    else Notify.show(activity.getString(R.string.dialog_mihomo_started));
-                });
-            });
+        // 已运行就不用再动
+        if (MihomoManager.isRunning(ctx())) {
+            dialog.dismiss();
+            return;
         }
-        dialog.dismiss();
+        // 开启：后台起内核；起不来 → 开关回弹为关 + 报错（不再假装开着）
+        setBusy(true, "正在启动…");
+        EXECUTOR.execute(() -> {
+            String err = MihomoManager.start(ctx());
+            MAIN.post(() -> {
+                setBusy(false, "");
+                if (err != null) {
+                    enableSwitch.setChecked(false);
+                    Notify.show("代理未启动: " + err);
+                } else {
+                    Notify.show(activity.getString(R.string.dialog_mihomo_started));
+                }
+                refreshStatus();
+                if (dialog != null && dialog.isShowing()) dialog.dismiss();
+            });
+        });
     }
 
     private static String text(EditText view) {
