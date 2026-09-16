@@ -1097,14 +1097,21 @@ public final class MihomoManager {
         }
     }
 
-    /** 真实节点(叶子 proxy, 排除组容器和 DIRECT/REJECT), 供测速/选择用。 */
+    /** 真实节点(叶子 proxy)：排除组容器 + 策略节点(DIRECT/REJECT/PASS/PASS-RULE 等
+     * 非可测速代理，type 为 Direct/Reject/Compatible，不是真实出站)。 */
     static List<ProxyInfo> listLeaves(Context context) {
         List<ProxyInfo> all = listProxies(context);
         List<ProxyInfo> out = new java.util.ArrayList<>();
         if (all == null) return out;
         for (ProxyInfo p : all) {
-            if (p.isGroup) continue;
-            if ("DIRECT".equalsIgnoreCase(p.name) || "REJECT".equalsIgnoreCase(p.name)) continue;
+            if (p.isGroup) continue
+            // 策略节点不是可测速的真实出站：DIRECT/REJECT/PASS/PASS-RULE 等
+            String t = p.type == null ? "" : p.type;
+            if ("Direct".equalsIgnoreCase(t) || "Reject".equalsIgnoreCase(t)
+                    || "Compatible".equalsIgnoreCase(t) || "Pass".equalsIgnoreCase(t)
+                    || "PassRule".equalsIgnoreCase(t) || "PassPolicy".equalsIgnoreCase(t)) {
+                continue;
+            }
             out.add(p);
         }
         return out;
