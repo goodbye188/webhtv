@@ -974,10 +974,11 @@ public final class MihomoManager {
             this.ok = delay >= 0;
         }
 
-        /** 一行摘要，方便 UI 列表显示(不刷屏)：成功显示 "节点A 183ms"，失败显示 "节点B 503"。 */
+        /** 一行摘要, 供 UI 列表显示(不刷屏): 成功 "节点A 183ms", 失败 "节点B HTTP 503 ..."。 */
         public String brief() {
-            return ok ? (name + " " + delay + "ms")
-                    : (name + " " + (httpCode >= 0 ? ("HTTP " + httpCode) : "网络异常") + error.isEmpty() ? "" : " " + error);
+            if (ok) return name + " " + delay + "ms";
+            String head = httpCode >= 0 ? ("HTTP " + httpCode) : "网络异常";
+            return name + " " + head + (error.isEmpty() ? "" : " " + error);
         }
     }
 
