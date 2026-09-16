@@ -1104,7 +1104,7 @@ public final class MihomoManager {
         List<ProxyInfo> out = new java.util.ArrayList<>();
         if (all == null) return out;
         for (ProxyInfo p : all) {
-            if (p.isGroup) continue
+            if (p.isGroup) continue;
             // 策略节点不是可测速的真实出站：DIRECT/REJECT/PASS/PASS-RULE 等
             String t = p.type == null ? "" : p.type;
             if ("Direct".equalsIgnoreCase(t) || "Reject".equalsIgnoreCase(t)
