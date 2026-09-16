@@ -982,7 +982,8 @@ public final class MihomoManager {
         }
     }
 
-    /** 测速目标(经节点直连的站点, 返回 204 且轻量, Clash 系标准 test-url)。 */
+    /** 测速目标(经节点直连的站点, 返回 204 且轻量, Clash 系标准 test-url)。
+     * 用户电脑端代理软件测速 URL 即为此值, 保持一致。 */
     private static final String DELAY_TEST_URL = "https://www.gstatic.com/generate_204";
 
     /** 全节点测速结果(按提交顺序；成功+失败都在)。 */
@@ -1074,7 +1075,6 @@ public final class MihomoManager {
                 try (java.io.InputStream es = conn.getErrorStream()) {
                     if (es != null) body = new String(es.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
                 }
-                // 截断保存, 防止节点返回超大错误体冲垮 UI
                 if (body.length() > 120) body = body.substring(0, 120) + "…";
                 return new DelayResult(name, -1, code, body.isEmpty() ? "" : body);
             }
@@ -1089,7 +1089,6 @@ public final class MihomoManager {
             }
             int delay = o.get("delay").getAsInt();
             if (delay < 0 || delay >= 65535) {
-                // 内核约定: 65535 或 -1 表示超时/失败(URLTest 返回 0 时内核走 503, 这里兜底)
                 return new DelayResult(name, -1, code, "delay=" + delay + " 视为失败");
             }
             return new DelayResult(name, delay, code, "");

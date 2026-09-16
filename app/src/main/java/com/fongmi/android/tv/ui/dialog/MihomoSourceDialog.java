@@ -209,28 +209,40 @@ public class MihomoSourceDialog {
      * 结果分成功/失败两段：成功数=能拿到延迟的节点；失败节点弹明细（带 HTTP 码/原因）。 */
     private void onTest() {
         setBusy(true, "正在测速…");
-        EXECUTOR.execute(() -> {
-            ensureRunning();
-            MihomoManager.DelayReport report = MihomoManager.testLatencyAll(ctx(), s -> {
-                MAIN.post(() -> statusText.setText(s));
-            });
-            MAIN.post(() -> {
-                setBusy(false, "");
-                refreshStatus();
-                if (report.okCount == 0) {
-                    Notify.show(activity.getString(R.string.dialog_mihomo_auto_fail));
-                } else {
-                    Notify.show(activity.getString(R.string.dialog_mihomo_test_summary,
-                            report.results.size(), report.okCount, report.failCount));
-                }
-                // 有失败节点就弹明细（节点名 + HTTP 码/原因），区分"接口错"还是"节点真不通"
-                java.util.List<MihomoManager.DelayResult> fails = new java.util.ArrayList<>();
-                for (MihomoManager.DelayResult r : report.results) {
-                    if (!r.ok) fails.add(r);
-                }
-                if (!fails.isEmpty()) showDelayFailures(fails);
-            });
-        });
+        // testLatencyAll 内部 latch.await 最长阻塞 120s；不能占弹窗单线程 EXECUTOR，
+        // 否则期间点其它按钮全排队 → 弹窗"死"。用独立线程跑。
+        Thread t = new Thread(() -> {
+            try {
+                ensureRunning();
+                MihomoManager.DelayReport report = MihomoManager.testLatencyAll(ctx(), s -> {
+                    MAIN.post(() -> statusText.setText(s));
+                });
+                MAIN.post(() -> {
+                    setBusy(false, "");
+                    refreshStatus();
+                    if (report.okCount == 0) {
+                        Notify.show(activity.getString(R.string.dialog_mihomo_auto_fail));
+                    } else {
+                        Notify.show(activity.getString(R.string.dialog_mihomo_test_summary,
+                                report.results.size(), report.okCount, report.failCount));
+                    }
+                    java.util.List<MihomoManager.DelayResult> fails = new java.util.ArrayList<>();
+                    for (MihomoManager.DelayResult r : report.results) {
+                        if (!r.ok) fails.add(r);
+                    }
+                    if (!fails.isEmpty()) showDelayFailures(fails);
+                });
+            } catch (Throwable ex) {
+                final String msg = String.valueOf(ex);
+                MAIN.post(() -> {
+                    setBusy(false, "");
+                    refreshStatus();
+                    Notify.show("测速异常: " + msg);
+                });
+            }
+        }, "mihomo-test-ui");
+        t.setDaemon(true);
+        t.start();
     }
 
     /** 测速失败明细（最多列 20 条，防止 47 个全失败刷屏）。 */
