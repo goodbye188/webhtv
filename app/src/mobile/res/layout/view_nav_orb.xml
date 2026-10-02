@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  悬浮光圈 + 展开导航列表。
+
+  结构说明（z 序自下而上）：
+    orb_layer  match_parent  仅作定位容器，平时不消费任何触摸
+      scrim    match_parent  展开时才 VISIBLE，用来接「点外面收起」
+      menu     wrap_content  展开时才 VISIBLE
+    orb        56dp          始终在最后添加 = 永远在最上层
+  orb_layer 平时即使 VISIBLE，内部的 scrim/menu 都是 GONE（不参与 hit test），
+  NavOrbView.onTouchEvent 也返回 false，所以未展开时完全不拦截底层列表的滑动和点击。
+
+  列表顺序：最近观看、我的收藏（高频，放顶部免得多划一下）｜直播、实验室、设置。
+  不放「点播」——它是启动默认页，返回键也能回到点播，多一个入口反而多一次点击。
+  历史/收藏原本在顶部工具栏和竖点弹窗里，已搬到这里（见 menu_vod.xml 顶部注释）。
+-->
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <FrameLayout
+        android:id="@+id/orb_layer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <View
+            android:id="@+id/orb_scrim"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/orb_menu"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_nav_orb_menu"
+            android:orientation="vertical"
+            android:padding="@dimen/nav_orb_menu_pad"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/orb_item_history"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@android:color/transparent"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/nav_orb_item_h"
+                android:orientation="horizontal"
+                android:paddingHorizontal="@dimen/nav_orb_item_pad_h">
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/orb_icon_history"
+                    android:layout_width="@dimen/nav_orb_icon"
+                    android:layout_height="@dimen/nav_orb_icon"
+                    android:src="@drawable/ic_popup_history"
+                    app:tint="#CCFFFFFF" />
+
+                <TextView
+                    android:id="@+id/orb_text_history"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="@string/app_history"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="14sp" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/orb_item_keep"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@android:color/transparent"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/nav_orb_item_h"
+                android:orientation="horizontal"
+                android:paddingHorizontal="@dimen/nav_orb_item_pad_h">
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/orb_icon_keep"
+                    android:layout_width="@dimen/nav_orb_icon"
+                    android:layout_height="@dimen/nav_orb_icon"
+                    android:src="@drawable/ic_popup_keep"
+                    app:tint="#CCFFFFFF" />
+
+                <TextView
+                    android:id="@+id/orb_text_keep"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="@string/app_keep"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="14sp" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/orb_item_live"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@android:color/transparent"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/nav_orb_item_h"
+                android:orientation="horizontal"
+                android:paddingHorizontal="@dimen/nav_orb_item_pad_h">
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/orb_icon_live"
+                    android:layout_width="@dimen/nav_orb_icon"
+                    android:layout_height="@dimen/nav_orb_icon"
+                    android:src="@drawable/ic_nav_live"
+                    app:tint="#CCFFFFFF" />
+
+                <TextView
+                    android:id="@+id/orb_text_live"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="@string/nav_live"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="14sp" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/orb_item_lab"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@android:color/transparent"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/nav_orb_item_h"
+                android:orientation="horizontal"
+                android:paddingHorizontal="@dimen/nav_orb_item_pad_h">
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/orb_icon_lab"
+                    android:layout_width="@dimen/nav_orb_icon"
+                    android:layout_height="@dimen/nav_orb_icon"
+                    android:src="@drawable/ic_nav_lab"
+                    app:tint="#CCFFFFFF" />
+
+                <TextView
+                    android:id="@+id/orb_text_lab"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="@string/app_lab"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="14sp" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/orb_item_setting"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@android:color/transparent"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/nav_orb_item_h"
+                android:orientation="horizontal"
+                android:paddingHorizontal="@dimen/nav_orb_item_pad_h">
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/orb_icon_setting"
+                    android:layout_width="@dimen/nav_orb_icon"
+                    android:layout_height="@dimen/nav_orb_icon"
+                    android:src="@drawable/ic_nav_setting"
+                    app:tint="#CCFFFFFF" />
+
+                <TextView
+                    android:id="@+id/orb_text_setting"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="@string/nav_setting"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="14sp" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+    <View
+        android:id="@+id/orb"
+        android:layout_width="@dimen/nav_orb_size"
+        android:layout_height="@dimen/nav_orb_size"
+        android:background="@drawable/bg_nav_orb"
+        android:contentDescription="@string/nav_orb" />
+
+</merge>

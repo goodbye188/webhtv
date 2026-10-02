@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 首页导航已换成 NavOrbView，这里只剩直播页(activity_live.xml)的 BottomNavigationView 在用。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="#1A73E8" android:state_checked="true" />
+    <item android:color="@color/white" />
+</selector>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  顶部工具栏：搜索 | 刷新 | 全屏 | 更多
+  「历史」和「收藏」已挪到 HomeActivity 的悬浮光圈展开列表里（NavOrbView），
+  这里不再提供入口，避免同一个功能有两个入口。
+  刷新原本在 more_actions 子菜单里，但使用频率很高，提到常驻位置占了历史原来的槽位。
+-->
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/search"
+        android:icon="@drawable/ic_action_search"
+        android:title="@string/menu_search"
+        app:iconTint="@color/white"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/refresh"
+        android:icon="@drawable/ic_popup_refresh"
+        android:title="@string/live_refresh"
+        app:iconTint="@color/white"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/web_home_fullscreen"
+        android:icon="@drawable/ic_control_fullscreen"
+        android:title="@string/play_fullscreen"
+        android:visible="false"
+        app:iconTint="@color/white"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/more_actions"
+        android:icon="@drawable/ic_action_more_vert"
+        android:title="@string/control_other"
+        app:iconTint="@color/white"
+        app:showAsAction="always">
+
+        <menu>
+            <item
+                android:id="@+id/sync"
+                android:icon="@drawable/ic_popup_sync"
+                android:title="@string/setting_one_key_sync" />
+
+            <item
+                android:id="@+id/push_apk"
+                android:icon="@drawable/ic_popup_apk"
+                android:title="@string/menu_push_apk" />
+
+            <item
+                android:id="@+id/push_play"
+                android:icon="@drawable/ic_popup_push"
+                android:title="@string/menu_push_play" />
+
+            <item
+                android:id="@+id/enhance"
+                android:icon="@drawable/ic_popup_enhance"
+                android:title="@string/setting_enhance" />
+        </menu>
+    </item>
+
+</menu>

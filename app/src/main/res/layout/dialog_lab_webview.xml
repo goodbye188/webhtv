@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    实验室 webview 全屏面板:
+    顶部 3dp 进度条 + WebView 撑满 + 底部固定按钮栏(关闭 / 浏览器打开)。
+    不用 MaterialAlertDialog 的按钮栏——全屏窗口下它的定位会错乱, 按钮漂进内容区。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF101216">
+
+    <ProgressBar
+        android:id="@+id/progress"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:max="100"
+        android:progress="0"
+        style="?android:attr/progressBarStyleHorizontal"/>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <WebView
+            android:id="@+id/webView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/content"
+        android:visibility="gone"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#FF1B1F26"
+        android:padding="10dp"
+        android:textSize="12sp"
+        android:textColor="#FF9AA2AF" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#FF1B1F26"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp">
+
+        <Button
+            android:id="@+id/btnClose"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackground"
+            android:text="关闭"
+            android:textColor="#FFE6E8EC"
+            android:textSize="14sp" />
+
+        <View
+            android:layout_width="1px"
+            android:layout_height="16dp"
+            android:layout_gravity="center_vertical"
+            android:background="#FF33383F" />
+
+        <Button
+            android:id="@+id/btnBrowser"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackground"
+            android:text="浏览器打开"
+            android:textColor="#FF8AB4F8"
+            android:textSize="14sp" />
+    </LinearLayout>
+</LinearLayout>
