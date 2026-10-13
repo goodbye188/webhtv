@@ -3,6 +3,7 @@ package com.fongmi.android.tv.ui.web;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
@@ -25,6 +26,9 @@ import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.ui.novel.NovelReaderHost;
 import com.fongmi.android.tv.ui.novel.NovelRouter;
 import com.fongmi.android.tv.ui.novel.ReaderHistory;
+import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.ResUtil;
+import com.fongmi.android.tv.utils.TmdbImageSaver;
 import com.github.catvod.crawler.SpiderDebug;
 
 import org.json.JSONArray;
@@ -43,6 +47,12 @@ import java.util.List;
 public class WebReaderActivity extends AppCompatActivity {
 
     private static final String TAG = "TV-reader";
+
+    /**
+     * 带 Referer 的图不会把真实地址暴露给 WebView，而是换成这个伪协议 + 本次会话有效的 token，
+     * 由 shouldInterceptRequest 代请求补头。saveImage 也走同一套换回逻辑。
+     */
+    private static final String READER_PIC_PREFIX = "readerpic://img?t=";
 
     public static final String EXTRA_KIND = "kind";           // 1=小说 2=漫画
     public static final String EXTRA_PAYLOAD = "payload";     // novel:// 或 pics:// 原始字符串
@@ -563,7 +573,7 @@ public class WebReaderActivity extends AppCompatActivity {
             int ua = u.indexOf("@User-Agent=");
             if (ua > 0) u = u.substring(0, ua);
             if (referer != null && !referer.isEmpty()) {
-                arr.put("readerpic://img?t=" + putPicToken(u, referer));
+                arr.put(READER_PIC_PREFIX + putPicToken(u, referer));
             } else {
                 arr.put(u);
             }
@@ -1115,6 +1125,48 @@ public class WebReaderActivity extends AppCompatActivity {
     @JavascriptInterface
     public void toast(String msg) {
         runOnUiThread(() -> Toast.makeText(this, msg, Toast.LENGTH_SHORT).show());
+    }
+
+    /**
+     * 保存当前这一页到相册（图集模式用）。
+     *
+     * <p>带 Referer 的图在 parsePics 里被换成了 {@code readerpic://img?t=token}，
+     * 那是给 WebView 拦截器用的伪协议，这里必须先换回真实 URL 与 Referer，
+     * 否则保存请求会被防盗链挡掉。文件名的片名/章节名由 HTML 传入。
+     */
+    @JavascriptInterface
+    public void saveImage(String url, String displayName) {
+        if (TextUtils.isEmpty(url)) {
+            toast(ResUtil.getString(R.string.detail_image_save_failed));
+            return;
+        }
+        String resolved = url;
+        String ref = "";
+        if (url.startsWith(READER_PIC_PREFIX)) {
+            String token = Uri.parse(url).getQueryParameter("t");
+            String[] entry = token == null ? null : picTokens.get(token);
+            if (entry == null || TextUtils.isEmpty(entry[0])) {
+                toast(ResUtil.getString(R.string.detail_image_save_failed));
+                return;
+            }
+            resolved = entry[0];
+            ref = entry[1] == null ? "" : entry[1];
+        }
+        final String source = resolved;
+        final String referer = ref;
+        // PermissionX 与 MediaStore 写入都要求主线程；@JavascriptInterface 跑在 JS 线程上。
+        runOnUiThread(() -> TmdbImageSaver.save(this, source, displayName, referer, new TmdbImageSaver.Callback() {
+
+            @Override
+            public void success(String name) {
+                Notify.show(ResUtil.getString(R.string.detail_image_save_success, name));
+            }
+
+            @Override
+            public void error(String message) {
+                Notify.show(message);
+            }
+        }));
     }
 
     /**

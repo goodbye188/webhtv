@@ -236,6 +236,26 @@ body.comic-active .chapter-drawer .drawer-tab-content { color:#e8ecf1; border-co
 }
 .comic-func-btn:active { background:rgba(255,255,255,0.12); }
 .comic-func-btn .comic-func-ico { font-size:18px; line-height:1; }
+/* 上下滚动模式下没有确定的「当前这一页」，保存按钮整体隐藏而不是置灰，
+   这样 func-row 仍是 4 个按钮，间距不被撑开 */
+.comic-func-btn.is-hidden { display:none; }
+/* 长按保存时给个轻微反馈，让用户知道手势被接收了 */
+#comicStage.comic-saving::after {
+    content:'正在保存…'; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    padding:10px 18px; border-radius:24px; background:rgba(0,0,0,0.62); color:#fff; font-size:14px;
+    pointer-events:none; z-index:5;
+}
+/* 长按进度环：按住图片时环渐次填满，填满即触发保存；手指移开或松手立刻移除，中途后悔也来得及。
+   用 SVG 的 stroke-dashoffset 而不是 conic-gradient + 自定义属性：CSS 变量要注册 @property
+   才能插值，老 WebView 上不注册就是静止的，等于没有进度反馈。 */
+.comic-hold-ring { position:absolute; inset:0; margin:auto; width:86px; height:86px; pointer-events:none; z-index:6; }
+.comic-hold-bg { fill:rgba(0,0,0,0.34); stroke:rgba(255,255,255,0.22); stroke-width:3; }
+.comic-hold-fg {
+    fill:none; stroke:#fff; stroke-width:3; stroke-linecap:round;
+    transform:rotate(-90deg); transform-origin:50% 50%;
+    animation-name:comic-hold-fill; animation-timing-function:linear; animation-fill-mode:forwards;
+}
+@keyframes comic-hold-fill { from { stroke-dashoffset:119.38; } to { stroke-dashoffset:0; } }
 /* 漫画设置面板（影视+风格） */
 #comicSettingPanel {
     position:fixed; left:10px; right:10px; bottom:8px; z-index:950;
@@ -546,6 +566,7 @@ body.comic-active .chapter-drawer .drawer-tab-content { color:#e8ecf1; border-co
     <div class="comic-func-row">
         <button class="comic-func-btn" id="comicModeBtn"><span class="comic-func-ico">⇄</span><span id="comicModeLabel">上下滚动</span></button>
         <button class="comic-func-btn" id="comicAutoBtn"><span class="comic-func-ico">▶</span><span>自动滚动</span></button>
+        <button class="comic-func-btn" id="comicSaveBtn"><span class="comic-func-ico">⤓</span><span>保存</span></button>
         <button class="comic-func-btn" id="comicSettingBtn"><span class="comic-func-ico">⚙</span><span>设置</span></button>
         <button class="comic-func-btn" id="comicChapterBtn"><span class="comic-func-ico">☰</span><span>目录</span></button>
     </div>
@@ -1953,21 +1974,124 @@ function comicShowPage(i){
     reportProgress();
 }
 
+/* ===== 保存当前这一页到相册 ===== */
+/* 只在左右翻页模式下提供：上下滚动时「当前这张」没有确定答案（用户看到的是一张长图里的
+   任意位置），硬取会存错图，所以那边干脆隐藏入口。原生侧 addJavascriptInterface 的名字是
+   AndroidReader，缺接口时降级为提示，不能让整个 renderComic 崩掉。 */
+function comicSave(){
+    if(comicMode !== 'h'){ showToast('请先切换到左右翻页模式'); return; }
+    var src = comicCurrentSrc();
+    if(!src){ showToast('当前没有可保存的图片'); return; }
+    requestSave(src);
+}
+
+/* 取当前页的原始地址：必须用 DATA.images 里的原串（含 readerpic:// 伪协议与 token），
+   不能读 img.src —— WebView 会把它解析成绝对地址，token 就丢了，原生侧换不回真实 URL。 */
+function comicCurrentSrc(){
+    if(!DATA.images || !DATA.images.length) return '';
+    if(comicCur < 0 || comicCur >= DATA.images.length) return '';
+    return DATA.images[comicCur] || '';
+}
+
+function requestSave(src){
+    var stage = $('comicStage');
+    if(stage){
+        stage.classList.add('comic-saving');
+        setTimeout(function(){ if(stage) stage.classList.remove('comic-saving'); }, 1600);
+    }
+    try{
+        if(typeof AndroidReader === 'undefined' || !AndroidReader.saveImage){
+            showToast('当前版本不支持保存');
+            if(stage) stage.classList.remove('comic-saving');
+            return;
+        }
+        AndroidReader.saveImage(src, comicFileName());
+    }catch(e){
+        showToast('保存失败');
+        if(stage) stage.classList.remove('comic-saving');
+    }
+}
+
+/* 文件名：片名_章节_页码。单章漫画时章节名与片名相同，去重免得出现 "xxx_xxx_1"。 */
+function comicFileName(){
+    var parts = [];
+    var vod = (DATA.vodName || '').trim();
+    var chapter = '';
+    if(DATA.chapters && DATA.chapters.length){
+        var c = DATA.chapters[DATA.current] || DATA.chapters[0];
+        chapter = ((c && c.name) || '').trim();
+    }
+    if(!chapter) chapter = (DATA.title || '').trim();
+    if(vod) parts.push(vod);
+    if(chapter && chapter !== vod) parts.push(chapter);
+    parts.push(String(comicCur + 1));
+    return parts.join('_');
+}
+
 function bindComicTouch(stage){
     var startX = 0, startY = 0, moved = false;
     var suppressClick = false;
+    // 长按保存：左右翻页模式下按住不动就直接存，不用先唤出底部栏
+    var holdTimer = null, holdFired = false, holdRing = null;
+    var HOLD_MS = 1000, HOLD_SLOP = 12;
+    function clearHold(){
+        if(holdTimer){ clearTimeout(holdTimer); holdTimer = null; }
+        if(holdRing){ holdRing.remove(); holdRing = null; }
+    }
+    function startHold(){
+        if(comicMode !== 'h') return;
+        holdFired = false;
+        clearHold();
+        // 按住期间显示进度环：没有它的话 1 秒纯粹是「等」，用户不知道手指要放多久，
+        // 也不知道自己是不是已经按过了，只能靠松手后的 Toast 才知道，白存一堆图。
+        var img = $('comicPageImg');
+        if(img){
+            holdRing = document.createElementNS('http://www.w3.org/2000/svg','svg');
+            holdRing.setAttribute('class', 'comic-hold-ring');
+            holdRing.setAttribute('viewBox', '0 0 44 44');
+            var bg = document.createElementNS('http://www.w3.org/2000/svg','circle');
+            bg.setAttribute('class', 'comic-hold-bg');
+            bg.setAttribute('cx', '22'); bg.setAttribute('cy', '22'); bg.setAttribute('r', '19');
+            var fg = document.createElementNS('http://www.w3.org/2000/svg','circle');
+            fg.setAttribute('class', 'comic-hold-fg');
+            fg.setAttribute('cx', '22'); fg.setAttribute('cy', '22'); fg.setAttribute('r', '19');
+            holdRing.appendChild(bg); holdRing.appendChild(fg);
+            img.parentNode.appendChild(holdRing);
+            // 周长 2πr ≈ 119.38，动画时长与阈值绑在一起：
+            // 改 HOLD_MS 时不会出现「环走完了还没触发」或反之
+            fg.style.strokeDasharray = '119.38';
+            fg.style.strokeDashoffset = '119.38';
+            fg.style.animationDuration = HOLD_MS + 'ms';
+        }
+        holdTimer = setTimeout(function(){
+            holdTimer = null;
+            var ring = holdRing; holdRing = null;
+            if(ring) ring.remove();
+            if(moved) return;
+            holdFired = true;
+            var src = comicCurrentSrc();
+            if(src) requestSave(src);
+            else showToast('当前没有可保存的图片');
+        }, HOLD_MS);
+    }
     // 触摸统一在舞台处理：滑动翻页 / 点按左中右区域
     stage.addEventListener('touchstart', function(e){
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
         moved = false;
+        startHold();
     }, {passive:true});
     stage.addEventListener('touchmove', function(e){
         var dx = Math.abs(e.touches[0].clientX - startX);
         var dy = Math.abs(e.touches[0].clientY - startY);
         if(dx > 10 || dy > 10) moved = true;
+        // 手指开始移动就不再是「长按」，但位移很小（手指轻微抖动）时继续等
+        if(moved && (dx > HOLD_SLOP || dy > HOLD_SLOP)) clearHold();
     }, {passive:true});
     stage.addEventListener('touchend', function(e){
+        clearHold();
+        // 长按已触发：这次 touchend 不再当点按，否则会顺带翻一页或切 UI
+        if(holdFired){ holdFired = false; suppressClick = true; setTimeout(function(){ suppressClick = false; }, 400); return; }
         var dx = e.changedTouches[0].clientX - startX;
         var dy = e.changedTouches[0].clientY - startY;
         var adx = Math.abs(dx), ady = Math.abs(dy);
@@ -1986,6 +2110,7 @@ function bindComicTouch(stage){
         else if(x > w * 0.7){ comicFlip(1); }
         else { toggleUIForKind(); }
     }, {passive:true});
+    stage.addEventListener('touchcancel', clearHold, {passive:true});
     // 鼠标/特殊环境兜底：点击翻页，滑动后400ms内抑制（避免与触摸重复）
     stage.addEventListener('click', function(e){
         if(suppressClick){ e.preventDefault(); e.stopPropagation(); return; }
@@ -2071,6 +2196,8 @@ function refreshComicMode(){
     var lb = $('comicModeLabel'); if(lb) lb.textContent = comicMode === 'h' ? '左右翻页' : '上下滚动';
     qsa('.comic-dir-opt').forEach(function(x){ x.classList.toggle('active', x.dataset.dir === comicMode); });
     qsa('.comic-trans-opt').forEach(function(x){ x.classList.toggle('active', x.dataset.h === comicTransH); });
+    // 上下滚动模式没有确定的「当前这张图」，隐藏保存入口而不是置灰
+    var save = $('comicSaveBtn'); if(save) save.classList.toggle('is-hidden', comicMode !== 'h');
 }
 function toggleComicAuto(){
     if(comicAutoTimer){ stopComicAuto(); showToast('已停止自动滚动'); return; }
@@ -2114,6 +2241,7 @@ qsa('.comic-trans-opt').forEach(function(x){
 });
 $('comicModeBtn').addEventListener('click', toggleComicMode);
 $('comicAutoBtn').addEventListener('click', toggleComicAuto);
+$('comicSaveBtn').addEventListener('click', comicSave);
 $('comicSettingBtn').addEventListener('click', function(){ closeAllPanels(); $('comicSettingPanel').classList.add('show'); $('panelMask').classList.add('show'); });
 $('comicChapterBtn').addEventListener('click', function(){ openDrawer('chapter'); });
 $('comicBtnPrevChapter').addEventListener('click', comicPrevChapter);

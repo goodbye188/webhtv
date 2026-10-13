@@ -32,27 +32,38 @@ public class TmdbImageSaver {
     private static final String TAG = "tmdb_image_save";
 
     public static void save(FragmentActivity activity, String url, Callback callback) {
+        save(activity, url, "", "", callback);
+    }
+
+    /**
+     * 保存远程图片到相册。
+     *
+     * @param displayName 期望的文件名（不含扩展名）；为空则按时间戳自动命名
+     * @param referer     防盗链 Referer；为空则不带该头
+     */
+    public static void save(FragmentActivity activity, String url, String displayName, String referer, Callback callback) {
         String source = normalize(url);
         if (TextUtils.isEmpty(source)) {
             if (callback != null) callback.error(ResUtil.getString(R.string.detail_image_save_failed));
             return;
         }
+        String name = TextUtils.isEmpty(displayName) ? fileName(source) : withExtension(displayName, extension(source));
+        String ref = referer == null ? "" : referer.trim();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            saveScoped(source, callback);
+            saveScoped(source, name, ref, callback);
         } else {
             PermissionUtil.requestFile(activity, granted -> {
                 if (!granted) {
                     if (callback != null) callback.error(ResUtil.getString(R.string.detail_image_permission_denied));
                     return;
                 }
-                saveLegacy(source, callback);
+                saveLegacy(source, name, ref, callback);
             });
         }
     }
 
-    private static void saveScoped(String url, Callback callback) {
+    private static void saveScoped(String url, String displayName, String referer, Callback callback) {
         Task.execute(() -> {
-            String displayName = fileName(url);
             String mimeType = mimeType(displayName);
             Uri uri = null;
             try {
@@ -66,7 +77,7 @@ public class TmdbImageSaver {
                 if (uri == null) throw new IllegalStateException(ResUtil.getString(R.string.detail_image_save_failed));
                 try (OutputStream output = resolver.openOutputStream(uri)) {
                     if (output == null) throw new IllegalStateException(ResUtil.getString(R.string.detail_image_save_failed));
-                    download(url, output);
+                    download(url, referer, output);
                 }
                 values.clear();
                 values.put(MediaStore.Images.Media.IS_PENDING, 0);
@@ -79,16 +90,15 @@ public class TmdbImageSaver {
         });
     }
 
-    private static void saveLegacy(String url, Callback callback) {
+    private static void saveLegacy(String url, String displayName, String referer, Callback callback) {
         Task.execute(() -> {
-            String displayName = fileName(url);
             String mimeType = mimeType(displayName);
             try {
                 File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), ALBUM);
                 if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException(ResUtil.getString(R.string.detail_image_save_failed));
                 File file = uniqueFile(dir, displayName);
                 try (OutputStream output = new FileOutputStream(file)) {
-                    download(url, output);
+                    download(url, referer, output);
                 }
                 MediaScannerConnection.scanFile(App.get(), new String[]{file.getAbsolutePath()}, new String[]{mimeType}, null);
                 success(callback, file.getAbsolutePath());
@@ -98,8 +108,16 @@ public class TmdbImageSaver {
         });
     }
 
-    private static void download(String url, OutputStream output) throws Exception {
-        try (Response response = OkHttp.newCall(url, TAG).execute()) {
+    private static void download(String url, String referer, OutputStream output) throws Exception {
+        okhttp3.Call call;
+        if (TextUtils.isEmpty(referer)) {
+            call = OkHttp.newCall(url, TAG);
+        } else {
+            java.util.Map<String, String> headers = new java.util.HashMap<>();
+            headers.put("Referer", referer);
+            call = OkHttp.newCall(url, headers);
+        }
+        try (Response response = call.execute()) {
             if (!response.isSuccessful()) throw new IllegalStateException(response.message());
             ResponseBody body = response.body();
             if (body == null) throw new IllegalStateException(ResUtil.getString(R.string.detail_image_save_failed));
@@ -132,6 +150,23 @@ public class TmdbImageSaver {
     private static String fileName(String url) {
         String ext = extension(url);
         return "webhtv_tmdb_" + new SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(new Date()) + ext;
+    }
+
+    /**
+     * 把调用方给的名字压成合法文件名：去掉路径分隔符与文件系统非法字符，
+     * 顺带补上按 URL 推断的扩展名。片名/章节名来自爬端，可能含 / : * 等字符，
+     * 直接拼进 MediaStore 会写到意料之外的路径或抛 IllegalArgumentException。
+     */
+    private static String withExtension(String displayName, String ext) {
+        String name = displayName.trim().replaceAll("[\\\\/:*?\"<>|\\x00-\\x1F]", "_");
+        name = name.replaceAll("\\s+", " ").trim();
+        // 连续的点会让 ".jpg" 变成隐藏文件，也可能撞上 "." / ".."
+        while (name.contains("..")) name = name.replace("..", ".");
+        if (name.startsWith(".")) name = name.substring(1);
+        if (name.isEmpty()) name = "image";
+        if (name.length() > 80) name = name.substring(0, 80).trim();
+        if (name.isEmpty()) name = "image";
+        return name.toLowerCase(Locale.US).endsWith(ext) ? name : name + ext;
     }
 
     private static String extension(String url) {
