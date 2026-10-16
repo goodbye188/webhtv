@@ -365,13 +365,17 @@ public final class ProxySubscriptionManager {
                 continue;
             }
             if (!inProxies) continue;
-            block.append(raw).append('\n');
-            // 新节点开始（行首 "-"）：先收尾上一个
+            // 新节点开始（行首 "-"）：先收尾上一个，再把这一行记进新节点的块。
+            // 顺序不能反——先 append 再 flush 会让上一个节点的 block 混进新节点的首行，
+            // 两个脏块拼进 proxies: 就会出现重名，mihomo 直接
+            // fatal: Parse config error: proxy X is the duplicate name。
             if (line.startsWith("-")) {
                 if (name != null && !TextUtils.isEmpty(server) && port > 0) {
                     flushClashNode(map, name, type, server, port, block);
                     name = null; server = null; type = null; port = 0;
+                    block.setLength(0);
                 }
+                block.append(raw).append('\n');
                 // 内联单行 JSON：{name: .., type: .., server: .., port: ..} 整体取全部字段
                 if (line.contains("{")) {
                     String inline = line.substring(line.indexOf('{'));
@@ -473,6 +477,154 @@ public final class ProxySubscriptionManager {
             } catch (Throwable e) {
                 return s;
             }
+        }
+    }
+
+    // ---------------- 真连接测速 ----------------
+
+    /**
+     * 真连接测速入口：分批起内核 → 批内并发测 → 最后恢复正式配置。
+     *
+     * 只测 maxNodes 个（传 0 = 全部）。批大小 8，对齐 v2rayN 的分页，不是同时开 50 多个端口。
+     *
+     * 恢复保障：无论中途是否抛异常，finally 都会用正式配置把内核起回来；
+     * 万一进程被杀，App.onCreate 的 applySaved() 也会兜住。
+     */
+    public List<ProxyNode> testReal(int maxNodes) {
+        List<ProxyNode> all = getNodes();
+        if (all.isEmpty()) return all;
+        String config = getConfig();
+        String coreName = Setting.getProxySubscriptionCoreName();
+        testing = true;
+        testedCount.set(0);
+        try {
+            List<ProxyNode> todo = maxNodes > 0 && all.size() > maxNodes
+                    ? new ArrayList<>(all.subList(0, maxNodes))
+                    : all;
+            int batchSize = Math.max(1, Math.min(8, todo.size()));
+            for (int from = 0; from < todo.size(); from += batchSize) {
+                List<ProxyNode> batch = todo.subList(from, Math.min(from + batchSize, todo.size()));
+                testRealBatch(batch);
+                testedCount.addAndGet(batch.size());
+                notifyProgress();
+            }
+            saveNodes(all);
+            return all;
+        } finally {
+            testing = false;
+            if (!TextUtils.isEmpty(config)) {
+                MihomoManager.get().start(config, coreName);
+            }
+            notifyProgress();
+        }
+    }
+
+    /**
+     * 单节点真实请求超时。
+     *
+     * 实测 5s 偏紧：node「🇯🇵日本高①」光是把 mihomo 出站拨通就花了 3.4s（日志里
+     * `using 🇯🇵日本高①` 那行的时间戳），剩下 1.6s 不够 gstatic 的 TLS 握手，
+     * 结果明明拨通了却被判 -1。8s 能把这类"慢但可用"的节点捞回来。
+     * 再慢的节点本来也带不动视频，没必要为其继续拉长整轮测试。
+     */
+    private static final int REAL_TEST_TIMEOUT_MS = 8000;
+    private static final String REAL_TEST_URL = "https://www.gstatic.com/generate_204";
+
+    /**
+     * 生成「真连接测速」专用配置：每批节点一个 listener，用 mihomo 的 proxy 字段把端口钉死到对应节点。
+     *
+     * 为什么能用：mihomo 的 tunnel.resolveMetadata() 开头就是
+     *   if metadata.SpecialProxy != "" { proxy = proxies[metadata.SpecialProxy]; return }
+     * 直接按名字取出站并 return，整段规则匹配都不执行。所以端口↔节点是固定一一对应的，
+     * 批内并发测不会互相踩，也不用改 selector 组（没响应的话控制 API 本身也用不了）。
+     * 名字写错会直接报 "proxy X not found"，不会静默回落成别的节点，测出来的数不会张冠李戴。
+     *
+     * 不需要 proxy-groups / rules —— resolveMetadata 提前 return 用不到。
+     */
+    private String buildSpeedTestConfig(List<ProxyNode> batch) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("mode: rule\nipv6: false\nallow-lan: false\nproxies:\n");
+        List<ProxyNode> usable = new ArrayList<>();
+        for (ProxyNode node : batch) {
+            String entry = toClashProxy(node);
+            if (entry == null) {
+                Log.w(TAG, "speed-test 跳过 name=" + node.getName() + "（无法生成 clash 条目）");
+                continue;
+            }
+            sb.append(entry).append('\n');
+            usable.add(node);
+        }
+        sb.append("listeners:\n");
+        for (int i = 0; i < usable.size(); i++) {
+            ProxyNode node = usable.get(i);
+            sb.append("  - name: st").append(i).append('\n');
+            sb.append("    type: mixed\n");
+            sb.append("    port: ").append(MihomoManager.getSpeedTestPort(i)).append('\n');
+            sb.append("    listen: 127.0.0.1\n");
+            sb.append("    proxy: ").append(quote(node.getName())).append('\n');
+        }
+        String config = sb.toString();
+        Log.d(TAG, "speed-test 生成的配置（" + usable.size() + " 个节点）:\n" + config);
+        return config;
+    }
+
+    /**
+     * 一批节点的并发真连接测速。**调用方负责之后把正式配置 start() 回去。**
+     *
+     * 走的是和实际使用完全一致的出站链路（经 mihomo），所以：
+     *   - 测通了，选用它大概率就通，解决「TCP 通但协议不通」的错判
+     *   - 由 mihomo 出站（它被 ipv6: false 强制走 IPv4），那批 v6 入口已死的节点不再误判 -1
+     */
+    private List<ProxyNode> testRealBatch(List<ProxyNode> batch) {
+        if (batch.isEmpty()) return batch;
+        String config = buildSpeedTestConfig(batch);
+        if (!MihomoManager.get().startRaw(config, MihomoManager.getSpeedTestPort(0))) {
+            Log.e(TAG, "speed-test: 测速内核启动失败 :: " + MihomoManager.get().getLastError());
+            for (ProxyNode node : batch) node.setLatency(-1);
+            return batch;
+        }
+        int threads = Math.min(Math.max(batch.size(), 1), 8);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+        try {
+            for (int i = 0; i < batch.size(); i++) {
+                final ProxyNode node = batch.get(i);
+                final int port = MihomoManager.getSpeedTestPort(i);
+                pool.submit(() -> {
+                    long cost = realDelayVia(port);
+                    node.setLatency(cost);
+                    Log.d(TAG, "speed-test " + (cost > 0 ? "OK  " : "FAIL") + " port=" + port
+                            + " cost=" + cost + "ms name=" + node.getName());
+                });
+            }
+            pool.shutdown();
+            if (!pool.awaitTermination(REAL_TEST_TIMEOUT_MS * 2L, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                Log.w(TAG, "speed-test: 批次超时未收敛");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            pool.shutdownNow();
+        }
+        return batch;
+    }
+
+    /** 经指定本地端口发一次真实请求，返回耗时；失败返回 -1 */
+    private long realDelayVia(int port) {
+        long start = System.currentTimeMillis();
+        try {
+            okhttp3.OkHttpClient client = OkHttp.client().newBuilder()
+                    .proxy(new java.net.Proxy(java.net.Proxy.Type.HTTP,
+                            new java.net.InetSocketAddress("127.0.0.1", port)))
+                    .connectTimeout(REAL_TEST_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .readTimeout(REAL_TEST_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .writeTimeout(REAL_TEST_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .build();
+            okhttp3.Request request = new okhttp3.Request.Builder().url(REAL_TEST_URL).head().build();
+            try (okhttp3.Response response = client.newCall(request).execute()) {
+                return response.code() == 204 ? System.currentTimeMillis() - start : -1;
+            }
+        } catch (Throwable e) {
+            return -1;
         }
     }
 
@@ -827,6 +979,7 @@ public final class ProxySubscriptionManager {
         }
         Log.d(TAG, "testAll: done in " + (System.currentTimeMillis() - start) + "ms, "
                 + reachable + " reachable, " + (size - reachable) + " unreachable");
+        logFailureSummary(size, reachable);
         saveNodes(list);
         return list;
     }
@@ -865,11 +1018,51 @@ public final class ProxySubscriptionManager {
         if (TextUtils.isEmpty(host) || node.getPort() <= 0) return -1;
         long start = System.currentTimeMillis();
         try (java.net.Socket socket = new java.net.Socket()) {
-            socket.connect(new java.net.InetSocketAddress(host, node.getPort()), 3000);
-            return System.currentTimeMillis() - start;
+            socket.connect(new java.net.InetSocketAddress(host, node.getPort()), TCP_TEST_TIMEOUT_MS);
+            long cost = System.currentTimeMillis() - start;
+            Log.d(TAG, "tcp-test ok name=" + node.getName() + " " + host + ":" + node.getPort()
+                    + " scheme=" + node.getScheme() + " supported=" + node.isSupported() + " cost=" + cost + "ms");
+            return cost;
+        } catch (java.net.SocketTimeoutException e) {
+            countFailure("timeout");
+            Log.w(TAG, "tcp-test timeout name=" + node.getName() + " " + host + ":" + node.getPort()
+                    + " scheme=" + node.getScheme() + " — TCP 连不上，但协议层可能仍可用");
+            return -1;
+        } catch (java.net.UnknownHostException e) {
+            countFailure("unknown-host");
+            Log.w(TAG, "tcp-test unknown-host name=" + node.getName() + " host=" + host
+                    + " — DNS 解析不出，订阅里的域名可能已失效");
+            return -1;
+        } catch (java.net.ConnectException e) {
+            countFailure("connect-refused");
+            Log.w(TAG, "tcp-test connect-refused name=" + node.getName() + " " + host + ":" + node.getPort()
+                    + " msg=" + e.getMessage() + " — 端口拒绝，节点可能过期或端口写错");
+            return -1;
         } catch (Throwable e) {
+            countFailure("other:" + e.getClass().getSimpleName());
+            Log.w(TAG, "tcp-test failed name=" + node.getName() + " " + host + ":" + node.getPort()
+                    + " scheme=" + node.getScheme() + " err=" + e.getClass().getSimpleName() + ": " + e.getMessage());
             return -1;
         }
+    }
+
+    private static final int TCP_TEST_TIMEOUT_MS = 3000;
+    private static final java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger> FAILURE_REASONS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private void countFailure(String reason) {
+        FAILURE_REASONS.computeIfAbsent(reason, k -> new java.util.concurrent.atomic.AtomicInteger()).incrementAndGet();
+    }
+
+    /** 测速结束打一行失败原因分布，判断 -1 到底卡在哪一环 */
+    private void logFailureSummary(int total, int reachable) {
+        if (FAILURE_REASONS.isEmpty()) return;
+        StringBuilder sb = new StringBuilder();
+        FAILURE_REASONS.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue().get(), a.getValue().get()))
+                .forEach(e -> sb.append(' ').append(e.getKey()).append('=').append(e.getValue().get()));
+        Log.d(TAG, "testAll: 失败原因分布 total=" + total + " reachable=" + reachable + " |" + sb);
+        FAILURE_REASONS.clear();
     }
 
     /** 星落 testViaMihomoProxy：OkHttp 走 127.0.0.1:18890 HTTP 代理 HEAD gstatic/204，成功返回耗时，失败返回 -1 */

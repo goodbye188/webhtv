@@ -92,6 +92,35 @@ public final class MihomoManager {
             note(lastError);
             return false;
         }
+        return launch(fixConfig(config, selected), MIXED_PORT);
+    }
+
+    /**
+     * AVstar 新增：真连接测速专用启动。
+     *
+     * 和 start() 的区别是**不过 fixConfig**——直接用传进来的配置原样落盘，
+     * 就绪探测打 readyPort 而不是 18890。这样测速配置可以自己定义 listeners
+     * （每节点一个端口钉死该节点），完全不碰正在服务的 18890。
+     *
+     * 注意：调用方负责测完把正式配置 start() 回去。
+     */
+    public synchronized boolean startRaw(String config, int readyPort) {
+        if (TextUtils.isEmpty(config)) {
+            lastError = "测速配置为空";
+            note(lastError);
+            return false;
+        }
+        return launch(config, readyPort);
+    }
+
+    /** 测速 listener 端口段：19100 起，和正式的 18890/18891 完全分开 */
+    public static final int SPEED_TEST_PORT_BASE = 19100;
+
+    public static int getSpeedTestPort(int index) {
+        return SPEED_TEST_PORT_BASE + index;
+    }
+
+    private boolean launch(String finalConfig, int readyPort) {
         stop();
         isStopping = false;
         lastError = null;
@@ -106,7 +135,7 @@ public final class MihomoManager {
             }
             File cfg = new File(workDir, "config.yaml");
             try {
-                Path.write(cfg, fixConfig(config, selected).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                Path.write(cfg, finalConfig.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             } catch (Throwable e) {
                 lastError = "配置文件写入失败: " + cfg.getAbsolutePath();
                 note(lastError);
@@ -126,10 +155,8 @@ public final class MihomoManager {
                     .redirectErrorStream(true)
                     .start();
             drain(process);
-            if (waitReady()) {
-                lastConfig = config;
-                if (selected == null) selected = "";
-                lastSelected = selected;
+            if (waitReady(readyPort)) {
+                lastConfig = finalConfig;
                 return true;
             }
             return false;
@@ -156,16 +183,16 @@ public final class MihomoManager {
         process = null;
     }
 
-    /** 星落 waitReady()：50 次 × 100ms，每轮查 isAlive + 18890 可连 */
-    private boolean waitReady() {
+    /** 星落 waitReady()：50 次 × 100ms，每轮查 isAlive + readyPort 可连 */
+    private boolean waitReady(int readyPort) {
         for (int i = 0; i < READY_TRIES; i++) {
             if (!isRunning()) {
                 lastError = "Mihomo进程启动后退出\n日志:\n" + logBuffer;
                 note(lastError);
                 return false;
             }
-            if (canConnect()) {
-                note("Mihomo启动成功，耗时" + (i * 100) + "ms");
+            if (canConnect(readyPort)) {
+                note("Mihomo启动成功，耗时" + (i * 100) + "ms 端口 " + readyPort);
                 return true;
             }
             try {
@@ -178,10 +205,10 @@ public final class MihomoManager {
         return false;
     }
 
-    /** 星落 canConnect()：纯 Java Socket 连 127.0.0.1:18890，超时 100ms */
-    private boolean canConnect() {
+    /** 星落 canConnect()：纯 Java Socket 连 127.0.0.1:port，超时 100ms */
+    private boolean canConnect(int port) {
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress("127.0.0.1", MIXED_PORT), CONNECT_TIMEOUT);
+            socket.connect(new InetSocketAddress("127.0.0.1", port), CONNECT_TIMEOUT);
             return true;
         } catch (Exception e) {
             return false;
