@@ -758,8 +758,8 @@
     <string name="web_home_extension_network_empty">当前过滤条件下没有请求</string>
     <string name="web_home_extension_network_select">选择一个请求查看详情。</string>
     <string name="web_home_extension_network_clear">清空请求</string>
-    <string name="setting_shell_proxy">Proxy</string>
-    <string name="setting_shell_proxy_config">Proxy</string>
+    <string name="setting_shell_proxy">代理</string>
+    <string name="setting_shell_proxy_config">代理</string>
     <string name="setting_custom_csp">站点注入</string>
     <string name="setting_custom_csp_add">新增</string>
     <string name="setting_custom_csp_insert_short">位置</string>
@@ -840,7 +840,7 @@
     <string name="setting_proxy_hosts">匹配域名</string>
     <string name="setting_proxy_rules">Proxy 规则</string>
     <string name="setting_proxy_rules_raw">Raw 规则</string>
-    <string name="setting_proxy_rules_hint">Raw JSON：{&quot;proxy&quot;:[{&quot;hosts&quot;:[&quot;example.com&quot;],&quot;urls&quot;:[&quot;socks5://127.0.0.1:1080&quot;]}]}</string>
+    <string name="setting_proxy_rules_hint">原始 JSON：{&quot;proxy&quot;:[{&quot;hosts&quot;:[&quot;example.com&quot;],&quot;urls&quot;:[&quot;socks5://127.0.0.1:1080&quot;]}]}</string>
     <string name="setting_proxy_default_url">默认代理地址</string>
     <string name="setting_proxy_rule_url">代理地址</string>
     <string name="setting_proxy_edit_rule">编辑规则 %1$d</string>
@@ -2524,6 +2524,7 @@
     <!-- Auto-generated missing translations -->
     <string name="live_no_epg">00:00 - 23:59 暂无节目信息</string>
     <string name="site_health_report_ad_blocked">播放 %1$d 次 / 广告拦截 %2$d 次</string>
+    <string name="site_health_report_ad_summary">广告拦截：共 %1$d 次 · %2$s</string>
     <string name="search_column">搜索布局</string>
     <string name="dialog_audio_enabled_label">启用规则</string>
     <string name="dialog_audio_add_hint">添加关键词或站点…</string>
@@ -2760,4 +2761,40 @@
     <string name="dialog_tmdb_test_omdb_success">OMDb API：连接成功并返回有效数据（%1$d 毫秒）</string>
     <string name="dialog_tmdb_test_omdb_failed">OMDb API：测试失败（%1$s，%2$d 毫秒）</string>
     <string name="site_health_report_search_hint">按站点名称搜索</string>
+
+    <!-- 代理订阅（照抄星落 ProxySubscriptionDialog） -->
+    <string name="setting_proxy_subscription">代理订阅</string>
+    <string name="proxy_sub_url">订阅地址</string>
+    <string name="proxy_sub_enable">启用代理订阅</string>
+    <string name="proxy_sub_update">更新</string>
+    <string name="proxy_sub_test">测试</string>
+    <string name="proxy_sub_auto">自动</string>
+    <string name="proxy_sub_nodes">节点</string>
+    <string name="proxy_sub_kernel_log">内核日志</string>
+    <string name="proxy_sub_kernel_log_count">%1$d 行</string>
+    <string name="proxy_sub_kernel_log_hint">内核启动后才会出现连接记录，每 1.5 秒自动刷新。</string>
+    <string name="proxy_sub_kernel_log_empty">内核日志为空</string>
+    <string name="proxy_sub_kernel_log_refresh">刷新</string>
+    <string name="proxy_sub_kernel_log_copy">复制</string>
+    <string name="proxy_sub_sort_hint">按延迟升序，越快越靠前。未测速的排在最后。</string>
+    <string name="proxy_sub_status">共 %1$d 个节点 · 已测速 %2$d</string>
+    <string name="proxy_sub_empty">请填写订阅地址</string>
+    <string name="proxy_sub_no_node">没有可用节点</string>
+    <string name="proxy_sub_parsed">已解析 %1$d 个节点，请选择</string>
+    <string name="proxy_sub_no_supported">已解析 %1$d 个节点。点「测试」找最快的，或从「节点」里选</string>
+    <string name="proxy_sub_select">选择</string>
+    <string name="proxy_sub_selected">已选：%1$s</string>
+    <string name="proxy_sub_hint">HTTP/SOCKS 节点直接使用。Clash 的 VMess/VLESS/Trojan/SS/Hysteria2/AnyTLS 节点经内置 mihomo 转发。</string>
+    <string name="proxy_sub_need_core">加密节点请用「自动」，由内置 mihomo 选线路</string>
+    <string name="proxy_sub_test_ok">延迟：%1$d 毫秒</string>
+    <string name="proxy_sub_test_done">测试完成：最快 %1$s</string>
+    <string name="proxy_sub_test_fail">测试失败</string>
+    <string name="proxy_sub_connect_fail">连接失败，换个节点试试</string>
+    <string name="proxy_sub_fail">订阅更新失败</string>
+    <string name="proxy_sub_push">扫码推送</string>
+    <string name="proxy_sub_push_title">代理推送</string>
+    <string name="proxy_sub_push_hint">打开地址后粘贴订阅地址，推送后会自动刷新。</string>
+
+    <!-- 网页主题详情 -->
+    <string name="web_theme_detail_loading">加载详情…</string>
 </resources>

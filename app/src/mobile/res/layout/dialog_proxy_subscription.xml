@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView android:scrollbars="none" android:layout_width="match_parent" android:layout_height="wrap_content"
   xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+  xmlns:tools="http://schemas.android.com/tools"
   android:background="@drawable/shape_shell_proxy_dialog">
     <LinearLayout android:orientation="vertical" android:paddingTop="20.0dp" android:paddingBottom="24.0dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="22.0dp" android:paddingEnd="22.0dp">
         <TextView android:textSize="20.0sp" android:textStyle="bold" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="16.0dp" android:text="@string/setting_proxy_subscription" />
@@ -14,7 +15,8 @@
             <com.google.android.material.button.MaterialButton android:textSize="14.0sp" android:id="@+id/update" android:layout_width="match_parent" android:layout_height="48.0dp" android:layout_marginBottom="8.0dp" android:text="@string/proxy_sub_update" app:cornerRadius="24.0dp" style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
             <com.google.android.material.button.MaterialButton android:textSize="14.0sp" android:id="@+id/test" android:layout_width="match_parent" android:layout_height="48.0dp" android:layout_marginBottom="8.0dp" android:text="@string/proxy_sub_test" app:backgroundTint="@android:color/transparent" app:cornerRadius="24.0dp" app:strokeColor="@color/black_20" app:strokeWidth="1.0dp" style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
             <com.google.android.material.button.MaterialButton android:textSize="14.0sp" android:id="@+id/auto" android:layout_width="match_parent" android:layout_height="48.0dp" android:layout_marginBottom="8.0dp" android:text="@string/proxy_sub_auto" app:backgroundTint="@android:color/transparent" app:cornerRadius="24.0dp" app:strokeColor="@color/black_20" app:strokeWidth="1.0dp" style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-            <com.google.android.material.button.MaterialButton android:textSize="14.0sp" android:id="@+id/nodes" android:layout_width="match_parent" android:layout_height="48.0dp" android:text="@string/proxy_sub_nodes" app:cornerRadius="24.0dp" style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+            <com.google.android.material.button.MaterialButton android:textSize="14.0sp" android:id="@+id/nodes" android:layout_width="match_parent" android:layout_height="48.0dp" android:layout_marginBottom="8.0dp" android:text="@string/proxy_sub_nodes" app:cornerRadius="24.0dp" style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+            <com.google.android.material.button.MaterialButton android:textSize="14.0sp" android:id="@+id/kernelLog" android:layout_width="match_parent" android:layout_height="48.0dp" android:layout_marginBottom="8.0dp" android:text="@string/proxy_sub_kernel_log" app:backgroundTint="@android:color/transparent" app:cornerRadius="24.0dp" app:strokeColor="@color/black_20" app:strokeWidth="1.0dp" style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

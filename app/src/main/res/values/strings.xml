@@ -2774,6 +2774,13 @@
         <string name="proxy_sub_test">Test</string>
         <string name="proxy_sub_auto">Auto</string>
         <string name="proxy_sub_nodes">Nodes</string>
+        <string name="proxy_sub_kernel_log">Kernel log</string>
+        <string name="proxy_sub_kernel_log_count">%1$d lines</string>
+        <string name="proxy_sub_kernel_log_hint">Connection lines appear after the core starts. Updates every 1.5s.</string>
+        <string name="proxy_sub_kernel_log_empty">Kernel log is empty</string>
+        <string name="proxy_sub_kernel_log_refresh">Refresh</string>
+        <string name="proxy_sub_kernel_log_copy">Copy</string>
+        <string name="proxy_sub_sort_hint">Sorted by latency, fastest first. Untested nodes go last.</string>
         <string name="proxy_sub_status">Total %1$d nodes · tested %2$d</string>
         <string name="proxy_sub_empty">Please enter subscription URL</string>
         <string name="proxy_sub_no_node">No available node</string>

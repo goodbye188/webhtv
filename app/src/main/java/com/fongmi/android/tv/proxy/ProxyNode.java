@@ -96,9 +96,28 @@ public class ProxyNode {
         return getName() + scheme + latencyText;
     }
 
+    /**
+     * 列表里单独一栏显示的延迟文本。
+     * 与 getDisplay() 分开：getDisplay 把延迟拼在名字后面、整行一个颜色，
+     * 没法只把 ping 标绿（星落就是这样，所以它的 getLatencyColor 一直没人调用）。
+     */
+    public String getLatencyText() {
+        if (latency > 0) return latency + " ms";
+        if (latency == -2) return "timeout";
+        return "—";
+    }
+
+    /**
+     * 绿=快、红=慢/超时、灰=没测速。
+     *
+     * -1 同时是「还没测」和「测速失败」（testTcpReachability 连不上、testOne 内核起不来都回 -1），
+     * 单看 -1 分不出这两种，所以统一走中性灰，别染红——不然测速前整个列表一片红。
+     * 真正失败的数量在状态栏「共 N 个节点 · 已测速 M」里看。
+     */
     public int getLatencyColor() {
-        if (latency > 0 && latency < 2000) return Color.parseColor("#4CAF50");
-        return Color.parseColor("#F44336");
+        if (latency > 0) return latency < 2000 ? Color.parseColor("#4CAF50") : Color.parseColor("#F44336");
+        if (latency == -2) return Color.parseColor("#F44336");
+        return Color.parseColor("#9E9E9E");
     }
 
     public boolean needsCore() {

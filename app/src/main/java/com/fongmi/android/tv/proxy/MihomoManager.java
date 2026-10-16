@@ -12,6 +12,10 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -30,7 +34,7 @@ public final class MihomoManager {
     private static final int READY_TRIES = 50;      // 50 × 100ms = 5 秒
     private static final int READY_INTERVAL = 100;
     private static final int CONNECT_TIMEOUT = 100;
-    private static final int LOG_MAX_LINES = 200;
+    private static final int LOG_MAX_LINES = 2000;
 
     private static final String CRLF = "\r\n";
     private static final String CR = "\r";
@@ -47,6 +51,7 @@ public final class MihomoManager {
     private String lastConfig;
     private String lastSelected;
     private final StringBuilder logBuffer = new StringBuilder();
+    private int bufferedLines;
     /** stop() 主动关闭时置 true，用于区分「主动停」和「异常崩」 */
     private volatile boolean isStopping = false;
     /** 内核异常退出回调（参数 = 内核日志全文），由界面层注册以便弹窗告警 */
@@ -84,18 +89,19 @@ public final class MihomoManager {
     public synchronized boolean start(String config, String selected) {
         if (TextUtils.isEmpty(config)) {
             lastError = "配置为空";
-            appendLog(lastError);
+            note(lastError);
             return false;
         }
         stop();
         isStopping = false;
         lastError = null;
         logBuffer.setLength(0);
+        bufferedLines = 0;
         try {
             File workDir = Path.files("mihomo");
             if (!workDir.exists() && !workDir.mkdirs()) {
                 lastError = "创建内核工作目录失败：" + workDir.getAbsolutePath();
-                appendLog(lastError);
+                note(lastError);
                 return false;
             }
             File cfg = new File(workDir, "config.yaml");
@@ -103,18 +109,18 @@ public final class MihomoManager {
                 Path.write(cfg, fixConfig(config, selected).getBytes(java.nio.charset.StandardCharsets.UTF_8));
             } catch (Throwable e) {
                 lastError = "配置文件写入失败: " + cfg.getAbsolutePath();
-                appendLog(lastError);
+                note(lastError);
                 return false;
             }
 
             File so = extractBinary();
             if (so == null || !so.exists()) {
                 lastError = "二进制文件不存在: " + (so == null ? "null" : so.getAbsolutePath());
-                appendLog(lastError);
+                note(lastError);
                 return false;
             }
             so.setExecutable(true);
-            appendLog("启动: " + so.getAbsolutePath() + " -d " + workDir.getAbsolutePath() + " -f " + cfg.getAbsolutePath());
+            note("启动: " + so.getAbsolutePath() + " -d " + workDir.getAbsolutePath() + " -f " + cfg.getAbsolutePath());
 
             process = new ProcessBuilder(so.getAbsolutePath(), "-d", workDir.getAbsolutePath(), "-f", cfg.getAbsolutePath())
                     .redirectErrorStream(true)
@@ -129,7 +135,7 @@ public final class MihomoManager {
             return false;
         } catch (Throwable e) {
             lastError = "启动异常: " + e.getMessage();
-            appendLog(lastError);
+            note(lastError);
             return false;
         }
     }
@@ -142,7 +148,7 @@ public final class MihomoManager {
             process.destroy();
             if (!process.waitFor(2, TimeUnit.SECONDS)) {
                 process.destroyForcibly();
-                appendLog("进程被强制终止");
+                note("进程被强制终止");
             }
         } catch (InterruptedException ignored) {
         } catch (Throwable ignored) {
@@ -155,11 +161,11 @@ public final class MihomoManager {
         for (int i = 0; i < READY_TRIES; i++) {
             if (!isRunning()) {
                 lastError = "Mihomo进程启动后退出\n日志:\n" + logBuffer;
-                appendLog(lastError);
+                note(lastError);
                 return false;
             }
             if (canConnect()) {
-                appendLog("Mihomo启动成功，耗时" + (i * 100) + "ms");
+                note("Mihomo启动成功，耗时" + (i * 100) + "ms");
                 return true;
             }
             try {
@@ -168,7 +174,7 @@ public final class MihomoManager {
             }
         }
         lastError = "Mihomo在5秒内未就绪\n日志:\n" + logBuffer;
-        appendLog(lastError);
+        note(lastError);
         return false;
     }
 
@@ -200,13 +206,69 @@ public final class MihomoManager {
         t.start();
     }
 
-    /** 星落 appendLog()：Log.d + 进 logBuffer，超过 200 行丢最旧的 */
-    private void appendLog(String text) {
+    /**
+     * 壳子自己产生的状态消息（启动命令、启动成功耗时、进程被终止、lastError）。
+     *
+     * 只进 logcat，不进 logBuffer：mihomo 自己在 info 档下会原生输出
+     * Initial configuration complete / HTTP proxy listening at:127.0.0.1:18890，
+     * 壳子再往同一个缓冲里塞中文裸文本，两种格式混在一起显示就不是 mihomo 日志的样子了。
+     * lastError 也走这里，但它照样写进 lastError 字段，失败弹窗和崩溃告警不受影响。
+     */
+    private void note(String text) {
         Log.d(TAG, text);
-        if (logBuffer.length() > 0) logBuffer.append('\n');
+    }
+
+    private static final String TIME_PREFIX = "time=\"";
+    private static final String LOCAL_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSSXXX";
+    private static volatile DateTimeFormatter localFormat;
+
+    /**
+     * mihomo 的时间戳永远是 UTC（形如 time="2026-10-16T10:30:00.248078840Z"），
+     * 换算成本地时区再存。
+     *
+     * 为什么内核自己改不了：libmihomo.so 里没有编入 tzdata（在二进制里搜
+     * Asia/Shanghai / tzdata 都是 0 命中），Go 的 time 包只能去系统路径找
+     * /usr/share/zoneinfo/ 等，而 Android 一个都没有（Android 的时区数据在
+     * /apex/com.android.runtime/etc/zoneinfo），查找必然失败回落 UTC。
+     * 所以设 TZ 环境变量也没用，只能在我们这边改写。
+     *
+     * 在 appendLog 里改而不是只在界面改：UI、Log.d 进的 logcat、复制按钮
+     * 三处一起是本地时间，不会出现「界面本地时间 / logcat UTC」对不上。
+     */
+    private String toLocalTime(String text) {
+        if (!text.startsWith(TIME_PREFIX)) return text;
+        int end = text.indexOf('"', TIME_PREFIX.length());
+        if (end < 0) return text;
+        try {
+            Instant instant = Instant.parse(text.substring(TIME_PREFIX.length(), end));
+            ZonedDateTime local = instant.atZone(ZoneId.systemDefault());
+            if (local.getOffset().getTotalSeconds() == 0) return text;
+            DateTimeFormatter formatter = localFormat;
+            if (formatter == null) {
+                formatter = DateTimeFormatter.ofPattern(LOCAL_FORMAT);
+                localFormat = formatter;
+            }
+            return TIME_PREFIX + formatter.format(local) + text.substring(end);
+        } catch (Throwable e) {
+            return text;
+        }
+    }
+
+    /**
+     * 星落 appendLog：mihomo 原生 stdout 的唯一入口，进 logBuffer，超出上限丢最旧的。
+     *
+     * 改成记行数而不是每次 split：原来每写一行都要 logBuffer.toString() 全量拷贝
+     * 再 split("\n") 生成整个数组。warning 档下日志稀疏无所谓，但 info 档每个 TCP
+     * 连接一行，上限提到 2000 后就是每行分配一个 2000 元素的数组。
+     * 而这段跑在 mihomo-log 守护线程上（drain stdout），它一慢就会顶住管道反把日志丢了。
+     */
+    private void appendLog(String raw) {
+        String text = toLocalTime(raw);
+        Log.d(TAG, text);
+        if (bufferedLines > 0) logBuffer.append('\n');
         logBuffer.append(text);
+        if (++bufferedLines <= LOG_MAX_LINES) return;
         String[] lines = logBuffer.toString().split("\n");
-        if (lines.length <= LOG_MAX_LINES) return;
         int drop = lines.length - (LOG_MAX_LINES - 1);
         String[] kept = new String[lines.length - drop];
         System.arraycopy(lines, drop, kept, 0, kept.length);
@@ -215,6 +277,7 @@ public final class MihomoManager {
             logBuffer.append(kept[i]);
             if (i < kept.length - 1) logBuffer.append('\n');
         }
+        bufferedLines = kept.length;
     }
 
     public String getLastError() {
@@ -248,7 +311,9 @@ public final class MihomoManager {
         config = putTopLevel(config, "allow-lan", "false");
         config = putTopLevel(config, "bind-address", "'127.0.0.1'");
         config = putTopLevel(config, "external-controller", "'127.0.0.1:" + CTL_PORT + "'");
-        config = putTopLevel(config, "log-level", "warning");
+        // warning 档下 mihomo 不产生 [TCP] ... match ... using ... 连接行（那是 info 级），
+        // 想看「哪个请求走了哪个端口」必须 info。上游/星落这里写死 warning。
+        config = putTopLevel(config, "log-level", "info");
         return config;
     }
 

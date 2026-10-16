@@ -4,7 +4,6 @@ import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Handler;
@@ -13,22 +12,27 @@ import android.text.TextUtils;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
-import android.widget.ArrayAdapter;
-import android.widget.TextView;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.databinding.DialogKernelLogBinding;
+import com.fongmi.android.tv.databinding.DialogProxyNodesBinding;
 import com.fongmi.android.tv.databinding.DialogProxySubscriptionBinding;
 import com.fongmi.android.tv.proxy.ProxyNode;
 import com.fongmi.android.tv.proxy.ProxySubscriptionManager;
 import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.ui.adapter.ProxyNodeAdapter;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Task;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -83,9 +87,9 @@ public class ProxySubscriptionDialog extends BaseAlertDialog {
         // 窗口背景透明（弹窗内容靠布局的 shape_shell_proxy_dialog 白色背景）
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);
-        params.width = (int) (width * (land ? 0.62f : 0.94f));
+        params.width = (int) (width * (land ? 0.82f : 0.96f));
         // 固定高度比例，保证底部 4 个按钮完整显示（WRAP_CONTENT 会因内容高被挤出屏幕）
-        params.height = (int) (height * (land ? 0.9f : 0.6f));
+        params.height = (int) (height * (land ? 0.92f : 0.78f));
         window.setAttributes(params);
         window.setLayout(params.width, params.height);
     }
@@ -110,6 +114,7 @@ public class ProxySubscriptionDialog extends BaseAlertDialog {
         binding.test.setOnClickListener(this::onTest);
         binding.auto.setOnClickListener(this::onAuto);
         binding.nodes.setOnClickListener(this::onNodes);
+        binding.kernelLog.setOnClickListener(this::onKernelLog);
     }
 
     /**
@@ -214,20 +219,52 @@ public class ProxySubscriptionDialog extends BaseAlertDialog {
         showNodeList(nodes);
     }
 
-    private void showNodeList(List<ProxyNode> nodes) {
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(requireActivity(), android.R.layout.simple_list_item_single_choice,
-                nodes.stream().map(ProxyNode::getDisplay).toArray(String[]::new));
-        int selected = getSelectedIndex(nodes);
-        new MaterialAlertDialogBuilder(requireActivity())
-                .setTitle(R.string.proxy_sub_nodes)
-                .setNegativeButton(R.string.dialog_negative, null)
-                .setSingleChoiceItems(adapter, selected, (dialog, which) -> selectNode(dialog, nodes, which))
-                .show();
+    /**
+     * 按延迟升序：可用的排前面按 ms 从小到大，超时(-2)其次，-1 自动沉底。
+     * -1 是「没测速」和「测速失败」共用值，所以两者都归到末尾；
+     * 全部 -1 时返回 0 交给 List.sort 的稳定性，保持订阅里的原始顺序。
+     */
+    private static final Comparator<ProxyNode> BY_LATENCY = (a, b) -> {
+        if (a.getLatency() > 0 && b.getLatency() > 0) return Long.compare(a.getLatency(), b.getLatency());
+        if (a.getLatency() > 0) return -1;
+        if (b.getLatency() > 0) return 1;
+        if (a.getLatency() == -2 && b.getLatency() != -2) return 1;
+        if (b.getLatency() == -2 && a.getLatency() != -2) return -1;
+        return 0;
+    };
+
+    private List<ProxyNode> sortByLatency(List<ProxyNode> nodes) {
+        List<ProxyNode> sorted = new ArrayList<>(nodes);
+        sorted.sort(BY_LATENCY);
+        return sorted;
     }
 
-    private void selectNode(DialogInterface dialog, List<ProxyNode> nodes, int index) {
-        ProxyNode node = nodes.get(index);
-        dialog.dismiss();
+    private void showNodeList(List<ProxyNode> nodes) {
+        List<ProxyNode> sorted = sortByLatency(nodes);
+        DialogProxyNodesBinding view = DialogProxyNodesBinding.inflate(getLayoutInflater());
+        ProxyNodeAdapter adapter = new ProxyNodeAdapter(this::selectNode);
+        adapter.setItems(sorted, Setting.getProxySubscriptionSelected(), Setting.getProxySubscriptionCoreName());
+        view.list.setAdapter(adapter);
+        view.list.setLayoutManager(new LinearLayoutManager(requireActivity()));
+        AlertDialog dialog = new MaterialAlertDialogBuilder(requireActivity())
+                .setView(view.getRoot())
+                .create();
+        view.close.setOnClickListener(v -> dialog.dismiss());
+        dialog.setOnShowListener(v -> {
+            Window window = dialog.getWindow();
+            if (window == null) return;
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            WindowManager.LayoutParams params = window.getAttributes();
+            params.width = (int) (ResUtil.getScreenWidth(requireContext()) * (ResUtil.isLand(requireContext()) ? 0.82f : 0.96f));
+            params.height = (int) (ResUtil.getScreenHeight(requireContext()) * (ResUtil.isLand(requireContext()) ? 0.92f : 0.78f));
+            window.setAttributes(params);
+            window.setLayout(params.width, params.height);
+        });
+        dialog.show();
+    }
+
+    private void selectNode(ProxyNode node) {
+        if (node == null) return;
         Notify.progress(requireActivity());
         Task.execute(() -> {
             try {
@@ -262,16 +299,64 @@ public class ProxySubscriptionDialog extends BaseAlertDialog {
         return best;
     }
 
-    private int getSelectedIndex(List<ProxyNode> nodes) {
-        String selected = Setting.getProxySubscriptionSelected();
-        String coreName = Setting.getProxySubscriptionCoreName();
-        for (int i = 0; i < nodes.size(); i++) {
-            if (selected.equals(nodes.get(i).getUrl())) return i;
+    /**
+     * 内核日志窗口。内容是 mihomo 自己的 stdout，格式形如
+     * [TCP] 127.0.0.1:54888 --> ininav.com:443 match GeoIP(cn) using DIRECT
+     *
+     * 窗口开到接近全屏：日志行很长（节点名里还带延迟和带宽），窄了要横向拖。
+     * 每 1.5 秒拉一次并保持在底部，关掉自动停。
+     */
+    private void onKernelLog(View view) {
+        DialogKernelLogBinding logView = DialogKernelLogBinding.inflate(getLayoutInflater());
+        AlertDialog dialog = new MaterialAlertDialogBuilder(requireActivity())
+                .setView(logView.getRoot())
+                .create();
+        Runnable refresh = new Runnable() {
+            @Override
+            public void run() {
+                if (dialog.isShowing()) {
+                    fillKernelLog(logView);
+                    logView.log.postDelayed(this, 1500);
+                }
+            }
+        };
+        logView.refresh.setOnClickListener(v -> fillKernelLog(logView));
+        logView.copy.setOnClickListener(v -> copyKernelLog(logView));
+        dialog.setOnShowListener(v -> {
+            Window window = dialog.getWindow();
+            if (window == null) return;
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            WindowManager.LayoutParams params = window.getAttributes();
+            params.width = (int) (ResUtil.getScreenWidth(requireContext()) * 0.97f);
+            params.height = (int) (ResUtil.getScreenHeight(requireContext()) * 0.95f);
+            window.setAttributes(params);
+            window.setLayout(params.width, params.height);
+        });
+        fillKernelLog(logView);
+        dialog.setOnDismissListener(v -> logView.log.removeCallbacks(refresh));
+        dialog.show();
+        logView.log.postDelayed(refresh, 1500);
+    }
+
+    private void fillKernelLog(DialogKernelLogBinding view) {
+        String log = com.fongmi.android.tv.proxy.MihomoManager.get().getLog();
+        if (TextUtils.isEmpty(log)) log = getString(R.string.proxy_sub_kernel_log_empty);
+        view.log.setText(log);
+        view.meta.setText(getString(R.string.proxy_sub_kernel_log_count, log.split("\n").length));
+        // 保持贴底，新行才看得见
+        view.scroll.post(() -> view.scroll.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private void copyKernelLog(DialogKernelLogBinding view) {
+        try {
+            ClipboardManager cm = (ClipboardManager) requireActivity().getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null) {
+                cm.setPrimaryClip(ClipData.newPlainText("mihomo-log", view.log.getText().toString()));
+                Notify.show("内核日志已复制");
+            }
+        } catch (Throwable e) {
+            Notify.show("复制失败: " + e.getMessage());
         }
-        for (int i = 0; i < nodes.size(); i++) {
-            if (!TextUtils.isEmpty(coreName) && coreName.equals(nodes.get(i).getName())) return i;
-        }
-        return 0;
     }
 
     /** 内核日志最后 8 行，用于失败弹窗（logBuffer 是 200 行环形缓冲，取尾部） */
