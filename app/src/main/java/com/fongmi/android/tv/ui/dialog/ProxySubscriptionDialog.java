@@ -171,7 +171,7 @@ public class ProxySubscriptionDialog extends BaseAlertDialog {
         setStatus();
         Task.execute(() -> {
             try {
-                ProxySubscriptionManager.get().testReal(0);
+                ProxySubscriptionManager.get().testAll();
                 postUi(() -> {
                     ProxySubscriptionManager.get().setProgressCallback(null);
                     binding.test.setEnabled(true);
