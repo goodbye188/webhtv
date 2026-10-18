@@ -62,9 +62,6 @@ public class GatewayWebViewClient extends WebViewClient {
     private static final int CONNECT_TIMEOUT = 15000;
     private static final int READ_TIMEOUT = 30000;
 
-    /** URL -> 最近一次 POST 的 body。由页面里的 shim 写入，由 shouldInterceptRequest 读取。 */
-    private final java.util.concurrent.ConcurrentHashMap<String, String> bodies = new java.util.concurrent.ConcurrentHashMap<>();
-
     public GatewayWebViewClient() {
     }
 
@@ -75,68 +72,21 @@ public class GatewayWebViewClient extends WebViewClient {
         if (!proxiable(url)) return null;
         String method = request.getMethod();
         if (!"GET".equals(method) && !"HEAD".equals(method)) {
-            // WebResourceRequest 没有 getRequestBody()，这里拿不到 body；
-            // 试图用 307 让 WebView 带 body 重发也不行 —— WebResourceResponse 的构造器
-            // 明确拒绝 3xx（statusCode can't be in the [300, 399] range）。
-            // 所以 body 只能由页面里的 shim 提前截获，见注入脚本 JS_SHIM。
-            String body = bodies.remove(url);
-            if (body == null) {
-                SpiderDebug.log("gateway-webview", "bypass method=%s url=%s reason=body-not-captured", method, url);
-                return null;
-            }
-            SpiderDebug.log("gateway-webview", "forward %s url=%s body=%d via gateway", method, url, body.length());
-            return fetch(url, method, request.getRequestHeaders(), body);
+            // 非 GET/HEAD 一律放行，交回 WebView 自己发。
+            //
+            // 这里曾经想用注入脚本截获 POST body 再补发到网关，实测行不通：
+            // WebResourceRequest 没有 getRequestBody()，307 也被 WebResourceResponse
+            // 构造器明确拒绝（statusCode can't be in the [300, 399] range），
+            // body 只能靠 shim 从页面里捞 —— 但实测 forward 0 次、bypass 5 次，
+            // 而且注入本身破坏了页面自己的 JS，那才是过不了盾的真正原因。
+            //
+            // 删掉 shim 后的实测结论：CF 挑战由 WebView 原生执行（真 Chromium 的
+            // JS 引擎 + 真 TLS 指纹），我们不需要碰它；只有 GET 必须改道走 mihomo，
+            // 否则被墙站点连盾都看不到。supjav 实测可自动过盾。
+            SpiderDebug.log("gateway-webview", "pass-through method=%s url=%s", method, url);
+            return null;
         }
         return fetch(url, method, request.getRequestHeaders(), null);
-    }
-
-    /**
-     * 注入页面，截获 fetch / XMLHttpRequest 的 POST body。
-     *
-     * <p>Cloudflare 挑战靠 POST 上报数据，而 WebResourceRequest 拿不到 body、
-     * 3xx 又被 WebResourceResponse 拒绝，所以这是唯一能拿到 body 的入口：
-     * 在请求离开 WebView 之前先在 JS 里存一份，Java 侧再按 URL 取出来补发到网关。
-     *
-     * <p>必须在页面任何脚本执行之前注入。shouldInterceptRequest 里拿不到 WebView
-     * 的 JS 上下文（且该回调不在 UI 线程），所以由调用方在 loadUrl 之前调用 inject()。
-     */
-    public static final String JS_SHIM =
-            "(function(){" +
-            "if(window.__gwShim)return;window.__gwShim=1;" +
-            "var P=function(k,v){try{window.__gwBodies[k]=v}catch(e){}};" +
-            "window.__gwBodies=window.__gwBodies||{};" +
-            "var of=window.fetch;if(of){window.fetch=function(u,o){" +
-            "try{var b=o&&o.body;if(b!=null&&typeof b!=='string'){b=null}" +
-            "if(b)P(String(u&&u.url||u),b)}catch(e){}return of.apply(this,arguments)}};" +
-            "var ox=XMLHttpRequest.prototype.open,os=XMLHttpRequest.prototype.send;" +
-            "XMLHttpRequest.prototype.open=function(m,u){this.__gwM=m;this.__gwU=u;return ox.apply(this,arguments)};" +
-            "XMLHttpRequest.prototype.send=function(b){try{" +
-            "if(this.__gwM&&this.__gwM!=='GET'&&this.__gwM!=='HEAD'&&b!=null&&typeof b==='string'){" +
-            "P(String(this.__gwU),b)}}catch(e){}return os.apply(this,arguments)};" +
-            "if(navigator.sendBeacon){var ob=navigator.sendBeacon.bind(navigator);" +
-            "navigator.sendBeacon=function(u,d){try{if(d!=null&&typeof d==='string')P(String(u),d)}catch(e){}" +
-            "return ob(u,d)}}" +
-            "})();";
-
-    /**
-     * 在页面加载前注入 body 截获脚本。必须在 UI 线程调用，且要在 loadUrl 之前。
-     * {@code webView} 用 {@code WebView} 类型会引入 android.webkit 依赖，这里直接收 WebView。
-     */
-    public void inject(WebView view) {
-        if (view == null) return;
-        try {
-            view.evaluateJavascript(JS_SHIM, null);
-            SpiderDebug.log("gateway-webview", "shim injected");
-        } catch (Throwable e) {
-            SpiderDebug.log("gateway-webview", "shim inject failed error=%s", e.getClass().getSimpleName());
-        }
-    }
-
-    @Override
-    public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
-        // API 21 以下的老回调。minSdk 24 上基本不会走到，留着是为了不改变 WebViewClient 的默认契约。
-        if (!proxiable(url)) return null;
-        return fetch(url, "GET", null, null);
     }
 
     /** 只有 http/https 才代理；其它 scheme（data/blob/file/about/content）交回 WebView 原生处理。 */
