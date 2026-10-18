@@ -44,6 +44,8 @@ public class ProxySubscriptionDialog extends BaseAlertDialog {
 
     private DialogProxySubscriptionBinding binding;
     private Runnable callback;
+    /** 节点列表弹窗。selectNode() 要用它关闭列表——它是 showNodeList() 的局部变量，不提出来就关不掉 */
+    private AlertDialog nodeDialog;
 
     public static ProxySubscriptionDialog create() {
         return new ProxySubscriptionDialog();
@@ -249,6 +251,7 @@ public class ProxySubscriptionDialog extends BaseAlertDialog {
         AlertDialog dialog = new MaterialAlertDialogBuilder(requireActivity())
                 .setView(view.getRoot())
                 .create();
+        nodeDialog = dialog;
         view.close.setOnClickListener(v -> dialog.dismiss());
         dialog.setOnShowListener(v -> {
             Window window = dialog.getWindow();
@@ -272,6 +275,7 @@ public class ProxySubscriptionDialog extends BaseAlertDialog {
                 postUi(() -> {
                     if (ok) {
                         Notify.show("已选择节点: " + node.getName());
+                        dismissNodeList();
                     } else {
                         // 内核起不来：弹窗展示 lastError + 内核日志最后几行（Toast 太短看不到原因）
                         String err = com.fongmi.android.tv.proxy.MihomoManager.get().getLastError();
@@ -288,6 +292,14 @@ public class ProxySubscriptionDialog extends BaseAlertDialog {
                 });
             }
         });
+    }
+
+    /** 关闭节点列表弹窗并清引用。选中成功才调；失败时保留列表，用户能直接改选下一个 */
+    private void dismissNodeList() {
+        if (nodeDialog != null) {
+            if (nodeDialog.isShowing()) nodeDialog.dismiss();
+            nodeDialog = null;
+        }
     }
 
     private ProxyNode getFastest(List<ProxyNode> nodes) {
