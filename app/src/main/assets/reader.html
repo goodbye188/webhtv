@@ -193,6 +193,20 @@ body { background:var(--bg); color:var(--fg); }
 /* ===== 漫画：影视+ 独立阅读器 UI ===== */
 body.comic-active #topBar, body.comic-active #bottomBar, body.comic-active #readingStatusBar { display:none !important; }
 body.comic-active { background:#111; }
+/* 图集全屏时系统返回键可能被隐藏，退出入口必须常驻，不能跟底部栏一起收起。 */
+#comicExitFloat {
+    display:none; position:fixed; z-index:1210;
+    top:calc(10px + env(safe-area-inset-top, 0px));
+    left:calc(10px + env(safe-area-inset-left, 0px));
+    align-items:center; gap:3px; padding:8px 13px 8px 10px;
+    border:1px solid rgba(255,255,255,0.2); border-radius:999px;
+    background:rgba(0,0,0,0.58); color:#fff; font-size:13px; line-height:1;
+    font-family:inherit; cursor:pointer; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    box-shadow:0 2px 12px rgba(0,0,0,0.35);
+}
+body.comic-active #comicExitFloat { display:flex; }
+#comicExitFloat:active { background:rgba(255,255,255,0.22); }
+#comicExitFloat .comic-exit-arrow { font-size:20px; line-height:1; margin-top:-1px; }
 body.comic-active .chapter-drawer { background:rgba(20,20,30,0.96); }
 body.comic-active .chapter-drawer .drawer-tab, body.comic-active .chapter-drawer .drawer-tab.active,
 body.comic-active .chapter-drawer .chapter-item, body.comic-active .chapter-drawer .chapter-search,
@@ -237,7 +251,7 @@ body.comic-active .chapter-drawer .drawer-tab-content { color:#e8ecf1; border-co
 .comic-func-btn:active { background:rgba(255,255,255,0.12); }
 .comic-func-btn .comic-func-ico { font-size:18px; line-height:1; }
 /* 上下滚动模式下没有确定的「当前这一页」，保存按钮整体隐藏而不是置灰，
-   这样 func-row 仍是 4 个按钮，间距不被撑开 */
+   这样 func-row 的按钮数量不受影响，间距不被撑开 */
 .comic-func-btn.is-hidden { display:none; }
 /* 长按保存时给个轻微反馈，让用户知道手势被接收了 */
 #comicStage.comic-saving::after {
@@ -572,6 +586,9 @@ body.comic-active .chapter-drawer .drawer-tab-content { color:#e8ecf1; border-co
     </div>
 </div>
 
+<!-- 图集全屏时常驻退出入口 -->
+<button id="comicExitFloat" type="button" aria-label="退出图集" title="退出图集"><span class="comic-exit-arrow">‹</span><span>返回</span></button>
+
 <!-- ===== 漫画设置面板（影视+风格） ===== -->
 <div id="comicSettingPanel">
     <button class="comic-close" data-close="comicSettingPanel">✕</button>
@@ -696,10 +713,11 @@ function showPanel(id){
 $('panelMask').addEventListener('click', function(){ closeAllPanels(); });
 
 /* ---------- 顶部栏 ---------- */
-$('btnBack').addEventListener('click', function(){
+function exitReader(){
     if(window.AndroidReader && AndroidReader.back) AndroidReader.back();
     else if(window.history && history.length > 0) history.back();
-});
+}
+$('btnBack').addEventListener('click', exitReader);
 $('btnChapterTop').addEventListener('click', function(){ openDrawer('chapter'); });
 $('btnTtsTop').addEventListener('click', function(){ showPanel('ttsPanel'); });
 
@@ -2033,7 +2051,7 @@ function bindComicTouch(stage){
     var suppressClick = false;
     // 长按保存：左右翻页模式下按住不动就直接存，不用先唤出底部栏
     var holdTimer = null, holdFired = false, holdRing = null;
-    var HOLD_MS = 1000, HOLD_SLOP = 12;
+    var HOLD_MS = 2000, HOLD_SLOP = 12;
     function clearHold(){
         if(holdTimer){ clearTimeout(holdTimer); holdTimer = null; }
         if(holdRing){ holdRing.remove(); holdRing = null; }
@@ -2042,7 +2060,7 @@ function bindComicTouch(stage){
         if(comicMode !== 'h') return;
         holdFired = false;
         clearHold();
-        // 按住期间显示进度环：没有它的话 1 秒纯粹是「等」，用户不知道手指要放多久，
+        // 按住期间显示进度环：没有它的话 2 秒纯粹是「等」，用户不知道手指要放多久，
         // 也不知道自己是不是已经按过了，只能靠松手后的 Toast 才知道，白存一堆图。
         var img = $('comicPageImg');
         if(img){
@@ -2244,6 +2262,7 @@ $('comicAutoBtn').addEventListener('click', toggleComicAuto);
 $('comicSaveBtn').addEventListener('click', comicSave);
 $('comicSettingBtn').addEventListener('click', function(){ closeAllPanels(); $('comicSettingPanel').classList.add('show'); $('panelMask').classList.add('show'); });
 $('comicChapterBtn').addEventListener('click', function(){ openDrawer('chapter'); });
+$('comicExitFloat').addEventListener('click', exitReader);
 $('comicBtnPrevChapter').addEventListener('click', comicPrevChapter);
 $('comicBtnNextChapter').addEventListener('click', comicNextChapter);
 $('comicSeek').addEventListener('input', function(){
