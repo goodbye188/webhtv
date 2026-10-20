@@ -308,6 +308,10 @@ public class SiteApi {
         // 过滤（排除广告等非媒体文件）由迅雷 SDK 的 TorrentInfo.getMedias() 内部完成，
         // 走 pushPlayer 与详情页的 Thunder.Parser 是同一套逻辑，选集结果一致。
         if (PUSH.equals(key) && Thunder.Parser.match(requestId)) return pushPlayer(flag, requestId, playerType, source);
+        // 详情页不再同步展开磁力（见 Source.parse），选集里保留的就是原始
+        // magnet/ed2k/thunder/torrent。点播时直接交给 Thunder，不经过爬虫：
+        // 很多源只是把 id 原样返回，个别源甚至不认识 magnet，绕过去最稳。
+        if (Thunder.Parser.match(requestId) && !Thunder.Parser.isTorrent(requestId)) return pushPlayer(flag, requestId, playerType, source);
         if (site.getType() == 3) {
             String fallbackReason;
             try {
@@ -364,6 +368,10 @@ public class SiteApi {
     }
 
     static String resolvePushPlayerUrl(String id) {
+        String value = id == null ? "" : id.trim();
+        // 已经是完整链接（尤其是 dn 里带空格的 magnet）就不要再走 sniffUrl，
+        // 否则会被 \\S+ 从空格处截断，后半段参数全丢。
+        if (Thunder.Parser.match(value)) return value;
         return PushParser.fromId(id).getUrl();
     }
 
@@ -408,7 +416,9 @@ public class SiteApi {
         vod.setPlayUrl(push.getUrl());
         vod.setPlayFrom(ResUtil.getString(R.string.push));
         vod.setPic(ResUtil.getString(R.string.push_image));
-        Source.get().parse(vod.setFlags());
+        // 推送只有一条磁力，仍展开成文件列表（单条解析最多 10 秒）；
+        // 普通站点详情页走默认的懒解析，避免整页卡在磁力上。
+        Source.get().parse(vod.setFlags(), true);
         return Result.vod(vod);
     }
 
