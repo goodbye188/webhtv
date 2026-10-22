@@ -338,6 +338,15 @@ public class NavOrbView extends FrameLayout {
         // 把光圈拖到别的位置就能看到剩余项）。
         int avail = h - topInset - bottomInset;
         menu.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(avail, MeasureSpec.AT_MOST));
+        // 把每一行的宽度统一成菜单宽度，让点击范围覆盖整行（而不只是图标+文字部分）。
+        int menuWidth = menu.getMeasuredWidth();
+        for (Entry entry : entries.values()) {
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) entry.root.getLayoutParams();
+            if (lp.width != menuWidth) {
+                lp.width = menuWidth;
+                entry.root.setLayoutParams(lp);
+            }
+        }
         FrameLayout.LayoutParams olp = (FrameLayout.LayoutParams) orb.getLayoutParams();
         int orbTop = olp.topMargin;
         int orbBottom = olp.topMargin + orbSize;
