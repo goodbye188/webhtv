@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.databinding.ViewProgressBinding;
 import com.fongmi.android.tv.theme.WebHtvAlertDialogBuilder;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 public class Notify {
 

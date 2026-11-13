@@ -28,6 +28,7 @@ import com.fongmi.android.tv.databinding.ActivityKeepBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.theme.WebHtvAlertDialogBuilder;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.fongmi.android.tv.ui.adapter.KeepAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.dialog.KeepGroupsDialog;
@@ -86,6 +87,12 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
                 R.string.keep_empty_description,
                 R.string.keep_empty_action,
                 view -> goHome());
+    }
+
+    /** 空态主按钮：回点播首页去挑一部。与 LiveActivity/VideoActivity 的回首页写法一致。 */
+    private void goHome() {
+        startActivity(new Intent(this, HomeActivity.class).addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
     }
 
     private void setupSearch() {

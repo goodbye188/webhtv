@@ -3110,7 +3110,6 @@
     <string name="plugin_manager_perm_events">Playback events (plugin.events)</string>
     <string name="plugin_manager_perm_episode_data">Episode data (plugin.data.episode)</string>
     <string name="plugin_panel_title">Plugin panel</string>
-</resources>
         <!-- 代理订阅（照抄星落 ProxySubscriptionDialog） -->
         <string name="setting_proxy_subscription">Proxy Subscription</string>
         <string name="proxy_sub_url">Subscription URL</string>
