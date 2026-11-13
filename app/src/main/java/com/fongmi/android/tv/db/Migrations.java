@@ -188,6 +188,16 @@ public class Migrations {
         public void migrate(@NonNull SupportSQLiteDatabase database) {
             addColumnIfMissing(database, "History", "sourceBindingKey",
                     "ALTER TABLE History ADD COLUMN `sourceBindingKey` TEXT DEFAULT ''");
+            // AVstar 兼容：旧 AVstar 46 库的 Config 没有 interfaceKey/urlsJson 列和
+            // interfaceKey 唯一索引，必须在 47_48 读取 urlsJson 之前补上，否则启动即崩（2026-11-13 实测）。
+            addColumnIfMissing(database, "Config", "interfaceKey",
+                    "ALTER TABLE Config ADD COLUMN `interfaceKey` TEXT");
+            addColumnIfMissing(database, "Config", "urlsJson",
+                    "ALTER TABLE Config ADD COLUMN `urlsJson` TEXT");
+            database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_Config_interfaceKey_type` ON `Config` (`interfaceKey`, `type`)");
+            // 旧 AVstar 库的 url_type 索引是 UNIQUE，上游要求非唯一——必须重建，否则 Room 校验失败。
+            database.execSQL("DROP INDEX IF EXISTS `index_Config_url_type`");
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_Config_url_type` ON `Config` (`url`, `type`)");
         }
     };
 
