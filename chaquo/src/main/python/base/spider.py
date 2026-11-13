@@ -36,6 +36,7 @@ from urllib.parse import quote, urlencode
 # ============================================================================
 
 GATEWAY_PREF_KEY = "py_gateway"
+IMPERSONATE_PREF_KEY = "py_impersonate"
 GATEWAY_TIMEOUT = 25
 
 
@@ -46,23 +47,38 @@ def _gateway_port():
         return 0
 
 
-def _gateway_wanted(extend):
-    """站点 ext 显式指定优先；没说则读全局开关。"""
-    flag = None
+def _gateway_flags(extend):
+    """解析站点 ext / 全局开关 -> (走网关?, 浏览器指纹档)。
+
+    站点 ext 优先，全局兜底：
+      {"gw":"1"}                OkHttp 网关档
+      {"imp":"chrome_131"}      浏览器指纹档（隐含走网关，经壳子转 libtlsclient.so）
+      Prefers py_gateway / py_impersonate  全局兜底，同上
+    """
+    gw = None
+    imp = None
     if extend:
         try:
             obj = json.loads(extend) if isinstance(extend, str) else extend
-            if isinstance(obj, dict) and "gw" in obj:
-                flag = str(obj["gw"]).strip().lower()
+            if isinstance(obj, dict):
+                if "gw" in obj:
+                    gw = str(obj["gw"]).strip().lower()
+                if "imp" in obj:
+                    v = str(obj["imp"]).strip()
+                    imp = v.lower() if v.lower() not in ("", "0", "false", "off", "no") else None
         except Exception:
             pass
-    if flag is None:
-        try:
-            from com.github.catvod.utils import Prefers
-            flag = str(Prefers.getString(GATEWAY_PREF_KEY, "0")).strip().lower()
-        except Exception:
-            flag = "0"
-    return flag in ("1", "true", "on", "yes")
+    try:
+        from com.github.catvod.utils import Prefers
+        if gw is None:
+            gw = str(Prefers.getString(GATEWAY_PREF_KEY, "0")).strip().lower()
+        if imp is None:
+            v = str(Prefers.getString(IMPERSONATE_PREF_KEY, "")).strip()
+            imp = v if v and v.lower() not in ("0", "false", "off", "no") else None
+    except Exception:
+        pass
+    wanted = gw in ("1", "true", "on", "yes") or imp is not None
+    return wanted, imp
 
 
 def _gateway_cookies(headers, cookies):
@@ -97,9 +113,11 @@ def _gateway_response(text, status, content_type, url):
 
 
 def gateway_request(method, url, headers=None, cookies=None, params=None,
-                    data=None, json_body=None, timeout=None, **_ignored):
+                    data=None, json_body=None, timeout=None, imp=None, **_ignored):
     """经壳子网关发一个请求。
 
+    :param imp: 浏览器指纹档（如 "chrome_131"）。有值时请求带 &imp= 参数，
+                由壳子转 libtlsclient.so 仿真发出；壳挂掉会 502，此时返回 None。
     :return: requests.Response；端口不可用或调用方没开网关时返回 None，
              由调用方决定是否回落。
     """
@@ -124,8 +142,11 @@ def gateway_request(method, url, headers=None, cookies=None, params=None,
         gw += "&headers=" + quote(json.dumps(out_headers), safe="")
     if body is not None:
         gw += "&body=" + quote(body, safe="")
+    if imp:
+        gw += "&imp=" + quote(str(imp), safe="")
     rsp = requests.request(method.upper(), gw, timeout=timeout or GATEWAY_TIMEOUT)
-    # 网关透传上游状态码；body 已是完整内容，不再解一次码
+    # 网关透传上游状态码；body 已是完整内容，不再解一次码。
+    # 指纹档桥不可用会 502 —— 交给调用方按回落链处理（这里原样返回状态码）。
     return _gateway_response(rsp.text, rsp.status_code,
                              rsp.headers.get("Content-Type"), url)
 
@@ -213,11 +234,12 @@ class Spider(metaclass=ABCMeta):
         return clean
 
     def fetch(self, url, params=None, cookies=None, headers=None, timeout=5, verify=True, stream=False, allow_redirects = True):
-        if _gateway_wanted(self.extend):
+        wanted, imp = _gateway_flags(self.extend)
+        if wanted:
             try:
                 rsp = gateway_request("GET", url, headers=headers, cookies=cookies,
-                                      params=params, timeout=timeout)
-                if rsp is not None:
+                                      params=params, timeout=timeout, imp=imp)
+                if rsp is not None and rsp.status_code != 502:
                     return rsp
             except Exception:
                 pass
@@ -226,12 +248,13 @@ class Spider(metaclass=ABCMeta):
         return rsp
 
     def post(self, url, params=None, data=None, json=None, cookies=None, headers=None, timeout=5, verify=True, stream=False, allow_redirects = True):
-        if _gateway_wanted(self.extend):
+        wanted, imp = _gateway_flags(self.extend)
+        if wanted:
             try:
                 rsp = gateway_request("POST", url, headers=headers, cookies=cookies,
                                       params=params, data=data, json_body=json,
-                                      timeout=timeout)
-                if rsp is not None:
+                                      timeout=timeout, imp=imp)
+                if rsp is not None and rsp.status_code != 502:
                     return rsp
             except Exception:
                 pass

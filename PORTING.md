@@ -39,3 +39,38 @@ git merge upstream/main          # 现在有共同祖先，可以直接 merge
 
 - 我们这一侧的 delta 随时可看：`git diff upstream/main...main`（三点）。
 - 编译产物：`app\build\outputs\apk\mobileArm64_v8a\release\mobile-arm64_v8a.apk`。
+
+
+---
+
+## TLS 指纹桥（libtlsclient.so，2026-11-14 新增）
+
+独立 Go 小内核（`tlsclient/`，与 libmihomo.so 同一打包/exec 模式），给 py/js 源提供浏览器 TLS 指纹仿真出站。
+
+### 架构
+
+```
+py/js 源 → /webResource?url=..&imp=chrome_131 (壳内 9978 端口)
+              ├─ imp 有值  → TlsClientManager.ensure() 拉起 Go 桥 → 转发（浏览器指纹档）
+              ├─ gw=1 无imp → OkHttp（网关档，Conscrypt HTTP/2）
+              └─ 都没有    → requests 直连（原始档）
+```
+
+- Go 桥监听 127.0.0.1:17890-17899（逐端口试，生效端口写 `files/tlsclient_port`）
+- `app/src/main/java/com/fongmi/android/tv/tls/TlsClientManager.java`：懒启动/孤儿复用/端口挑选/进程管理
+- py 基座 `chaquo/src/main/python/base/spider.py`：`fetch/post` 支持 `ext {"imp":"chrome_131"}` 与全局 `py_impersonate`；502 自动回落 OkHttp 网关 → requests
+
+### py 源用法（不用知道桥端口）
+
+```python
+# 站点 ext 填 {"imp":"chrome_131"}（或全局 Prefers py_impersonate）
+# 源代码里 self.fetch(...)/self.post(...) 自动走浏览器指纹档
+```
+
+### 重新编译内核
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File tlsclient/build.ps1
+# 产物自动写入 app/src/main/jniLibs/arm64-v8a/libtlsclient.so（仅 arm64-v8a）
+# go 工具链 D:\Go（1.22+），模块下载走 goproxy.cn；协议见 tlsclient/main.go 头注释
+```
