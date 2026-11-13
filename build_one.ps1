@@ -36,9 +36,9 @@ $env:PATH          = "D:\python310;$env:PATH"
 $env:JAVA_HOME     = 'D:\tmp_wk\jdk21\jdk-21.0.12.1+1'
 $env:ANDROID_HOME  = 'D:\Android\sdk'
 $env:PATH          = "$env:JAVA_HOME\bin;$env:PATH"
-# jitpack 走直连不经过代理，其余走 127.0.0.1:2080
-$ProxyOpts = '-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=2080 ' +
-             '-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=2080 ' +
+# jitpack 走直连不经过代理，其余走 127.0.0.1:7890
+$ProxyOpts = '-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=7890 ' +
+             '-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7890 ' +
              '-Dhttp.nonProxyHosts="*jitpack.io*" -Dhttps.nonProxyHosts="*jitpack.io*"'
 $env:GRADLE_OPTS        = "-Xmx4g $ProxyOpts"
 $env:JAVA_TOOL_OPTIONS  = $ProxyOpts
