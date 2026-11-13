@@ -128,6 +128,36 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/orb_item_following"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@android:color/transparent"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/nav_orb_item_h"
+                android:orientation="horizontal"
+                android:paddingHorizontal="@dimen/nav_orb_item_pad_h">
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/orb_icon_following"
+                    android:layout_width="@dimen/nav_orb_icon"
+                    android:layout_height="@dimen/nav_orb_icon"
+                    android:src="@drawable/ic_nav_following"
+                    app:tint="#CCFFFFFF" />
+
+                <TextView
+                    android:id="@+id/orb_text_following"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="@string/nav_following"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="14sp" />
+
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/orb_item_lab"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

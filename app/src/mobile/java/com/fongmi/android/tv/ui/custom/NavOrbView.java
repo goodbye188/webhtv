@@ -118,6 +118,7 @@ public class NavOrbView extends FrameLayout {
         addEntry(R.id.history, R.id.orb_item_history, R.id.orb_icon_history, R.id.orb_text_history);
         addEntry(R.id.keep, R.id.orb_item_keep, R.id.orb_icon_keep, R.id.orb_text_keep);
         addEntry(R.id.live, R.id.orb_item_live, R.id.orb_icon_live, R.id.orb_text_live);
+        addEntry(R.id.following, R.id.orb_item_following, R.id.orb_icon_following, R.id.orb_text_following);
         addEntry(R.id.lab, R.id.orb_item_lab, R.id.orb_icon_lab, R.id.orb_text_lab);
         addEntry(R.id.setting, R.id.orb_item_setting, R.id.orb_icon_setting, R.id.orb_text_setting);
     }
