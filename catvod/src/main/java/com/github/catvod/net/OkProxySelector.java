@@ -39,6 +39,14 @@ public class OkProxySelector extends ProxySelector {
         SpiderDebug.log("proxy", "selector add rules=%s total=%s", items.size(), proxy.size());
     }
 
+    /** 照抄星落：移除同名旧节点后加入新节点，再按自然序排序。星落 ProxySubscriptionManager 依赖它。 */
+    public synchronized void addOrReplace(Proxy item) {
+        Authenticator.setDefault(new ProxyAuthenticator(this));
+        remove(item.getName());
+        proxy.add(item);
+        proxy.sort(null);
+    }
+
     public synchronized void remove(String name) {
         int before = proxy.size();
         proxy.removeIf(item -> item.getName().equals(name));

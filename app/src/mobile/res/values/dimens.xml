@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      FAB 与右下角悬浮光圈的垂直间隙。
+      FAB(56dp) 底边距屏幕物理底部 136dp，即顶边在 高度-192dp。
+      光圈(56dp) 默认底边在 高度-bottomInset-202dp，留 10dp 间隙；
+      三键导航(inset 48dp)时间隙自动拉到 58dp，光圈不会被系统栏压住。
+      光圈可拖动，用户挪走后两者可能重叠，属预期行为 —— 需要避开时直接拖走。
+    -->
+    <dimen name="fab_bottom_clearance">136dp</dimen>
+
+    <!-- 光圈几何。edge 是 orb 主体到屏幕边缘的距离，压到 4dp 让它看起来是贴边的：
+         光晕外扩 14dp 会被裁掉 10dp，但最外圈 alpha 只有 #1A，视觉上完全看不出来。 -->
+    <dimen name="nav_orb_size">56dp</dimen>
+    <dimen name="nav_orb_edge">4dp</dimen>
+    <dimen name="nav_orb_gap">10dp</dimen>
+    <!-- 光圈与展开列表的间距 -->
+    <dimen name="nav_orb_menu_gap">10dp</dimen>
+    <dimen name="nav_orb_menu_pad">6dp</dimen>
+    <dimen name="nav_orb_item_h">44dp</dimen>
+    <dimen name="nav_orb_item_pad_h">14dp</dimen>
+    <dimen name="nav_orb_item_gap">2dp</dimen>
+    <dimen name="nav_orb_icon">22dp</dimen>
+
+</resources>

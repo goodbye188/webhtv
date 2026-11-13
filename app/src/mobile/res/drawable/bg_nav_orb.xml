@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  悬浮光圈 v5：玫瑰红。
+
+  迭代过程（供以后调参参考）：
+    v1  实核 22dp + #FFFFF8E1 象牙白   →  太大、刺眼
+    v2  实核 14dp + #FFEADFC0 暖米白   →  仍像白色圆盘，不像"光"
+    v3  12dp 渐变光点（无硬边）        →  太"虚"，反馈必须要有焦点
+    v4  实核 18dp + Material Pink 色系  →  焦点对了，但偏粉，想更红
+    v5  实核 18dp + 玫瑰红（当前）
+
+  主色用 #FF2E88 而不是标准 Rose #FF007F：
+  #FF007F 在深色背景上饱和度过高，正是 v1 被嫌"刺眼"的同一类问题；
+  #FF2E88 保持玫瑰红的艳度但压了一点，中低强度下更耐看。
+
+  为什么 v3「纯光晕」最后没用：全黑播放器 / 黑色海报墙下纯光晕会失去焦点，
+  用户得盯着屏幕找它。所以焦点必须实心，靠大小和柔和度平衡，而不是靠有没有。
+
+  三层：
+    外层  超出血色范围的大片柔光，最淡，负责"铺开"
+    中层  主体光晕，负责"发光"
+    内层  18dp 实心焦点（orb 56dp 的 32%），负责"视觉锚点"
+
+  想彻底去掉焦点：删掉最下面那个 item，纯光晕也成立。
+
+  换配色只改下面 4 组色值。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 外层柔光：inset 负值让它溢出 view 边界，光晕比 56dp 的点击区域大一圈 -->
+    <item
+        android:bottom="-14dp"
+        android:left="-14dp"
+        android:right="-14dp"
+        android:top="-14dp">
+        <shape android:shape="oval">
+            <gradient
+                android:centerX="0.5"
+                android:centerY="0.5"
+                android:endColor="#00FF4D8E"
+                android:gradientRadius="42dp"
+                android:startColor="#1AFF4D8E"
+                android:type="radial" />
+        </shape>
+    </item>
+
+    <!-- 中层光晕：浅玫瑰 → 玫瑰红 → 深玫瑰红 → 透明，是视觉主体 -->
+    <item>
+        <shape android:shape="oval">
+            <gradient
+                android:centerColor="#66FF2E88"
+                android:centerX="0.5"
+                android:centerY="0.5"
+                android:endColor="#00C7005B"
+                android:gradientRadius="28dp"
+                android:startColor="#CCFFB3D9"
+                android:type="radial" />
+        </shape>
+    </item>
+
+    <!-- 中心实核：18dp（inset 19dp ×2 + 56dp），带玫瑰调所以不像白色圆盘 -->
+    <item
+        android:bottom="19dp"
+        android:left="19dp"
+        android:right="19dp"
+        android:top="19dp">
+        <shape android:shape="oval">
+            <solid android:color="#FFFFC4D6" />
+        </shape>
+    </item>
+
+</layer-list>

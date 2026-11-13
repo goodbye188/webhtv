@@ -37,6 +37,16 @@ public class Proxy implements Comparable<Proxy> {
         }
     }
 
+    /** 照抄星落：构造一个代理规则并 init()。星落 ProxySubscriptionManager 依赖它。 */
+    public static Proxy create(String name, List<String> hosts, List<String> urls) {
+        Proxy proxy = new Proxy();
+        proxy.name = name;
+        proxy.hosts = hosts;
+        proxy.urls = urls;
+        proxy.init();
+        return proxy;
+    }
+
     public void init() {
         wildcard = getHosts().stream().anyMatch(host -> host.contains("*"));
         uris = getUrls().stream().map(Uri::parse).filter(this::isValid).toList();

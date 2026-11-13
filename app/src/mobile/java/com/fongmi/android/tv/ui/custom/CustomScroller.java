@@ -3,6 +3,8 @@ package com.fongmi.android.tv.ui.custom;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.fongmi.android.tv.event.ScrollEvent;
+
 import com.fongmi.android.tv.bean.Result;
 
 public class CustomScroller extends RecyclerView.OnScrollListener {
@@ -20,6 +22,7 @@ public class CustomScroller extends RecyclerView.OnScrollListener {
 
     @Override
     public void onScrolled(@NonNull RecyclerView view, int dx, int dy) {
+        ScrollEvent.post(dy);
         if (view.getScrollState() == RecyclerView.SCROLL_STATE_IDLE || view.canScrollVertically(1) || dy <= 0) return;
         loadMore();
     }

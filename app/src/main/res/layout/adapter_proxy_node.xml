@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.appcompat.widget.LinearLayoutCompat xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?android:attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:minHeight="56dp"
+    android:orientation="horizontal"
+    android:paddingStart="8dp"
+    android:paddingEnd="16dp">
+
+    <com.google.android.material.radiobutton.MaterialRadioButton
+        android:id="@+id/selected"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:clickable="false"
+        android:duplicateParentState="true"
+        android:focusable="false"
+        android:importantForAccessibility="no" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:singleLine="true"
+        android:textColor="#202124"
+        android:textSize="15sp"
+        tools:text="香港 01 [socks5]" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/latency"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:gravity="end"
+        android:minWidth="68dp"
+        android:singleLine="true"
+        android:textSize="14sp"
+        tools:text="128 ms"
+        tools:textColor="#4CAF50" />
+
+</androidx.appcompat.widget.LinearLayoutCompat>

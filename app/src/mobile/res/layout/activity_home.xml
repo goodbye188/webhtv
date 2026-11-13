@@ -1,24 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
+
+    <!-- 顶部安全区由 WebHomeChromeController.applyLayout() 统一写在 root padding 上，
+         并配合 init() 里的 setFitsSystemWindows(false)，保证全 App 只有它一个写入方。
+         container 不设 layout_above，内容铺满屏幕底部。 -->
 
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/container"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_above="@+id/navigation" />
+        android:layout_height="match_parent" />
 
-    <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/navigation"
+    <!-- 悬浮光圈导航：match_parent 只是为了拿到全屏坐标系来做绝对定位 + 拖动边界约束，
+         自身不消费触摸（未展开时内部全 GONE，onTouchEvent 也返回 false），
+         所以叠在内容之上不影响列表滑动和 WebView 手势。 -->
+    <com.fongmi.android.tv.ui.custom.NavOrbView
+        android:id="@+id/nav_orb"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:layout_alignParentBottom="true"
-        android:background="@color/transparent"
-        app:elevation="0dp"
-        app:itemIconTint="@color/selector_nav"
-        app:labelVisibilityMode="unlabeled"
-        app:menu="@menu/menu_nav" />
+        android:layout_height="match_parent" />
 
 </RelativeLayout>
