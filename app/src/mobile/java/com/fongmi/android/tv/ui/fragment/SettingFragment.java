@@ -36,6 +36,7 @@ import com.fongmi.android.tv.ui.dialog.HistoryDialog;
 import com.fongmi.android.tv.ui.dialog.LiveDialog;
 import com.fongmi.android.tv.ui.dialog.RestoreDialog;
 import com.fongmi.android.tv.ui.dialog.BackupProgressDialog;
+import com.fongmi.android.tv.ui.dialog.ProxySubscriptionDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
 import com.fongmi.android.tv.utils.AppVersion;
 import com.fongmi.android.tv.cache.CacheCenter;
@@ -136,6 +137,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         // recorded deviation rather than a printed hint (docs/CACHE-MGMT-01-cache-management-design.md).
         mBinding.cache.setOnLongClickListener(this::onCacheManage);
         mBinding.backup.setOnClickListener(this::onBackup);
+        mBinding.proxy.setOnClickListener(this::onProxy);
         mBinding.enhance.setOnClickListener(this::onEnhance);
         mBinding.tmdb.setOnClickListener(this::onTmdb);
         mBinding.ai.setOnClickListener(this::onAi);
@@ -260,6 +262,10 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
 
     private void onSubtitle(View view) {
         getRoot().change(6);
+    }
+
+    private void onProxy(View view) {
+        ProxySubscriptionDialog.show(this, () -> { });
     }
 
     private void onEnhance(View view) {

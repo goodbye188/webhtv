@@ -18,6 +18,9 @@ def releaseTag = (System.getenv('WEBHTV_RELEASE_TAG') ?: '').replace('\\', '\\\\
 def apkSuffix = (System.getenv('WEBHTV_APK_SUFFIX') ?: '').replaceAll('[^A-Za-z0-9._-]', '')
 def gitRevision = 'unavailable'
 def gitState = 'unavailable'
+// ---- 单包定版（2026-11-07）：不再打三包，只保留 AV剧场 ----
+// 历史上的三包共存参数删掉了；gradle 里直接写死，
+// gradlew 单独调用不再需要 -Pbrand，launcher 图标也已定版，不再有换图标动作。
 def mpvSourceLock = new groovy.json.JsonSlurper().parse(rootProject.file('third_party/mpv-native-lock.json'))
 def mpvSourceRevisions = ['mpv', 'ffmpeg', 'libplacebo'].collect { name -> "${name}=${mpvSourceLock.sources[name].commit}" }.join(' ') + " framework=${mpvSourceLock.builder.commit}"
 try {
@@ -35,12 +38,13 @@ android {
     ndkVersion "29.0.14206865"
 
     defaultConfig {
-        applicationId "com.silent.android.webhtv"
+        applicationId "com.avstar.tv.juchang"
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
         versionCode 560
         versionName "5.6.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        resValue "string", "app_name", "星秀"
         buildConfigField "String", "BUILD_TIME", "\"${buildTime}\""
         buildConfigField "String", "BUILD_TAG", "\"${releaseTag}\""
         buildConfigField "String", "GIT_REVISION", "\"${gitRevision}\""
@@ -82,6 +86,7 @@ android {
     buildFeatures {
         buildConfig = true
         viewBinding = true
+        resValues = true
     }
 
     testOptions {
@@ -124,6 +129,13 @@ android {
                     details.because('Use bundled Media3 build with MediaTitle and danmaku APIs')
                 }
             }
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            // 强制解压 native lib 到 nativeLibraryDir（libmihomo.so 是独立二进制，需真实文件才能 exec）
+            useLegacyPackaging = true
         }
     }
 

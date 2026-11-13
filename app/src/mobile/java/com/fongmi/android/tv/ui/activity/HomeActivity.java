@@ -6,9 +6,7 @@ import android.content.Intent;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.text.TextUtils;
-import android.view.MenuItem;
 import android.view.View;
-import android.widget.RelativeLayout;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.pm.ShortcutInfoCompat;
@@ -29,20 +27,20 @@ import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.event.ServerEvent;
 import com.fongmi.android.tv.event.StateEvent;
-import com.fongmi.android.tv.following.FollowingPlaybackBridge;
-import com.fongmi.android.tv.following.FollowingSettings;
-import com.fongmi.android.tv.following.FollowingScheduler;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.lab.LabActivity;
 import com.fongmi.android.tv.lab.LabConfig;
 import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.receiver.ShortcutReceiver;
+import com.fongmi.android.tv.following.FollowingScheduler;
+import com.fongmi.android.tv.following.FollowingSettings;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.service.PlaybackService;
 import com.fongmi.android.tv.setting.AutoBackupPolicy;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.FragmentStateManager;
+import com.fongmi.android.tv.ui.custom.NavOrbView;
 import com.fongmi.android.tv.ui.fragment.SettingEnhanceFragment;
 import com.fongmi.android.tv.ui.fragment.SettingAdFragment;
 import com.fongmi.android.tv.ui.fragment.SettingAiFragment;
@@ -63,13 +61,12 @@ import com.fongmi.android.tv.utils.Util;
 import com.fongmi.android.tv.web.WebHomeChromeStartup;
 import com.fongmi.android.tv.web.WebHomeViewport;
 import com.github.catvod.net.OkHttp;
-import com.google.android.material.navigation.NavigationBarView;
 import com.google.gson.JsonObject;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 
-public class HomeActivity extends BaseActivity implements NavigationBarView.OnItemSelectedListener, WebHomeChromeController.Host, VodFragment.ConfigRetry {
+public class HomeActivity extends BaseActivity implements NavOrbView.OnNavItemClickListener, WebHomeChromeController.Host {
 
     public static final String EXTRA_NAV_POSITION = "nav_position";
     private static final String STATE_RETURN_VOD_FROM_ENHANCE = "returnVodFromEnhance";
@@ -91,7 +88,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        setIntent(intent);
         checkAction(intent);
     }
 
@@ -109,22 +105,24 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         mStartupConfig = Config.vod();
         mChrome = new WebHomeChromeController(this, mBinding, this, savedInstanceState, WebHomeChromeStartup.restore(mStartupConfig));
         mBinding.getRoot().addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> checkWindowShape(right - left, bottom - top));
-        mBinding.navigation.setOnItemSelectedListener(this);
+        mBinding.navOrb.setOnNavItemClickListener(this);
         setNavigation();
+        // 不在此处注册 OnApplyWindowInsetsListener：WebHomeChromeController.init() 已在
+        // 同一个 view 上注册过，而 ViewCompat.setOnApplyWindowInsetsListener 是 set 语义，
+        // 后注册者会顶掉前者，导致控制器的 applyLayout()（顶部安全区）失效、并在切站源时跳动。
+        // 光圈自己只读 insets 用于约束拖动范围（NavOrbView 内部），不写 root padding。
         PermissionUtil.requestFile(this, allGranted -> PermissionUtil.requestNotify(this));
         FollowingScheduler.ensurePeriodic(this);
         FollowingScheduler.enqueueDueNow(this);
         initFragment(savedInstanceState);
-        if (savedInstanceState == null && getIntent().hasExtra(EXTRA_NAV_POSITION)) checkAction(getIntent());
         initConfig();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (mBinding.navigation.getMenu().findItem(R.id.lab).isVisible() != LabConfig.get().getNavEntry()
-                || mBinding.navigation.getMenu().findItem(R.id.following).isVisible() != FollowingSettings.isEnabled()) setNavigation();
-        updateFollowingBadge();
+        if (mBinding.navOrb.isItemVisible(R.id.lab) != LabConfig.get().getNavEntry()
+                || mBinding.navOrb.isItemVisible(R.id.following) != FollowingSettings.isEnabled()) setNavigation();
     }
 
     @Override
@@ -137,7 +135,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void initEvent() {
-        mBinding.navigation.findViewById(R.id.live).setOnLongClickListener(this::addShortcut);
+        mBinding.navOrb.setItemOnLongClickListener(R.id.live, this::addShortcut);
     }
 
     private void checkAction(Intent intent) {
@@ -197,19 +195,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         WallConfig.get().init();
     }
 
-    /**
-     * 首页错误态的重试动作。
-     *
-     * <p>失败的那一步是这里的**内容源配置加载**（{@link #initConfig()}），所以重试必须回到它——
-     * 由 VodFragment 通过 {@link VodFragment.ConfigRetry} 回调过来。重试期间先把状态浮层切回
-     * 加载态，避免错误态一直停在屏幕上。
-     */
-    @Override
-    public void retryConfig() {
-        StateEvent.progress();
-        initConfig();
-    }
-
     private Callback getCallback() {
         return new Callback() {
             @Override
@@ -217,29 +202,11 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
                 checkAction(getIntent());
             }
 
-            /**
-             * 还没有配置任何内容源（重置应用、重装或恢复出厂后的首次启动）。
-             *
-             * <p>这不是失败：没有地址可请求、没有失败原因、重试也永远不会成功。改动前
-             * {@code BaseConfig} 把它当 {@code error("")} 抛出来，首页便显示「内容源加载失败 /
-             * 重试」——一个不存在的故障加一个点了没用的按钮。这里改发「未配置」状态：
-             * 不接管首页，由 {@code VodFragment} 收起状态浮层、保留底部导航；添加接口仍走
-             * 既有的「设置 → 点播」管理面板（{@code HistoryDialog} 的「添加」）。
-             */
-            @Override
-            public void noConfig() {
-                resetVodChrome();
-                checkAction(getIntent());
-                StateEvent.noConfig();
-            }
-
             @Override
             public void error(String msg) {
                 resetVodChrome();
                 checkAction(getIntent());
-                // 失败要发 ERROR（带原因），不能发 EMPTY：消费方对 EMPTY 的处理只是
-                // "隐藏转圈"，于是加载失败后首页是一片空白，用户只看到一个会消失的吐司。
-                StateEvent.error(msg);
+                StateEvent.empty();
                 Notify.show(msg);
             }
         };
@@ -255,18 +222,16 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     private void setNavigation() {
-        mBinding.navigation.getMenu().findItem(R.id.vod).setVisible(true);
-        mBinding.navigation.getMenu().findItem(R.id.setting).setVisible(true);
-        mBinding.navigation.getMenu().findItem(R.id.lab).setVisible(LabConfig.get().getNavEntry());
-        mBinding.navigation.getMenu().findItem(R.id.live).setVisible(LiveConfig.hasUrl());
-        mBinding.navigation.getMenu().findItem(R.id.following).setVisible(FollowingSettings.isEnabled());
-        updateFollowingBadge();
+        // 历史/收藏常驻，不需要显隐控制；这里只同步条件项。
+        mBinding.navOrb.setItemVisible(R.id.setting, true);
+        mBinding.navOrb.setItemVisible(R.id.lab, LabConfig.get().getNavEntry());
+        mBinding.navOrb.setItemVisible(R.id.live, LiveConfig.hasUrl());
+        mBinding.navOrb.setItemVisible(R.id.following, FollowingSettings.isEnabled());
         syncNavigationSelection();
     }
 
-    private boolean openLive() {
+    private void openLive() {
         LiveActivity.start(this);
-        return false;
     }
 
     private boolean addShortcut(View view) {
@@ -284,15 +249,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     public void setNavigationVisible(boolean visible) {
-        RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) mBinding.container.getLayoutParams();
-        if (visible) {
-            params.addRule(RelativeLayout.ABOVE, R.id.navigation);
-            mBinding.navigation.setVisibility(View.VISIBLE);
-        } else {
-            params.removeRule(RelativeLayout.ABOVE);
-            mBinding.navigation.setVisibility(View.GONE);
-        }
-        mBinding.container.setLayoutParams(params);
+        mBinding.navOrb.setOrbVisible(visible);
         mBinding.getRoot().requestApplyInsets();
     }
 
@@ -319,57 +276,41 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     @Override
-    public boolean onNavigationItemSelected(@NonNull MenuItem item) {
+    public void onNavItemClick(int itemId) {
+        // 历史/收藏是纯跳转，不动选中态，也不碰 setNavigationVisible（光圈本来就在那）。
+        if (itemId == R.id.history) {
+            HistoryActivity.start(this);
+            return;
+        }
+        if (itemId == R.id.keep) {
+            KeepActivity.start(this);
+            return;
+        }
+        if (itemId == R.id.following) {
+            FollowingActivity.start(this, null);
+            return;
+        }
         returnVodFromEnhance = false;
         setNavigationVisible(true);
-        if (item.getItemId() == R.id.setting) return changeFragment(1);
-        if (item.getItemId() == R.id.lab) {
+        if (itemId == R.id.setting) {
+            mBinding.navOrb.setSelectedItemId(R.id.setting);
+            changeFragment(1);
+        } else if (itemId == R.id.lab) {
+            // 实验室是独立 Activity，选中态保持在当前页
             LabActivity.start(this);
-            return false;
+        } else if (itemId == R.id.live) {
+            openLive();
         }
-        if (item.getItemId() == R.id.vod) return changeFragment(0);
-        if (item.getItemId() == R.id.live) return openLive();
-        if (item.getItemId() == R.id.following) {
-            FollowingActivity.start(this, null);
-            return false;
-        }
-        return false;
     }
 
-    private void updateFollowingBadge() {
-        if (mBinding == null || mBinding.navigation.getMenu().findItem(R.id.following) == null) return;
-        if (!FollowingSettings.isEnabled()) {
-            mBinding.navigation.removeBadge(R.id.following);
-            return;
-        }
-        applyFollowingBadge(FollowingPlaybackBridge.cachedUnreadCount());
-        FollowingPlaybackBridge.refreshUnreadCountAsync(unread -> {
-            if (!isFinishing() && !isDestroyed()) applyFollowingBadge(unread);
-        });
-    }
-
-    private void applyFollowingBadge(int unread) {
-        if (mBinding == null || mBinding.navigation.getMenu().findItem(R.id.following) == null) return;
-        if (!FollowingSettings.isEnabled()) {
-            mBinding.navigation.removeBadge(R.id.following);
-            return;
-        }
-        if (unread > 0) mBinding.navigation.getOrCreateBadge(R.id.following).setNumber(unread);
-        else mBinding.navigation.removeBadge(R.id.following);
-    }
-
+    /** 点播是默认页且不在光晕列表里，所以它的「选中态」是 -1（都不选中）。 */
     private void selectNavigation(int position) {
-        int itemId = position == 0 ? R.id.vod : R.id.setting;
-        if (mBinding.navigation.getSelectedItemId() == itemId) changeFragment(position);
-        else mBinding.navigation.setSelectedItemId(itemId);
+        mBinding.navOrb.setSelectedItemId(position == 0 ? -1 : R.id.setting);
+        changeFragment(position);
     }
 
     private void syncNavigationSelection() {
-        int itemId = currentPosition == 0 ? R.id.vod : R.id.setting;
-        if (mBinding.navigation.getSelectedItemId() == itemId) return;
-        mBinding.navigation.setOnItemSelectedListener(null);
-        mBinding.navigation.setSelectedItemId(itemId);
-        mBinding.navigation.setOnItemSelectedListener(this);
+        mBinding.navOrb.setSelectedItemId(currentPosition == 0 ? -1 : R.id.setting);
     }
 
     private boolean changeFragment(int position) {
@@ -445,7 +386,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     public void openVod() {
         resetVodChrome();
         setNavigationVisible(true);
-        mBinding.navigation.setSelectedItemId(R.id.vod);
+        mBinding.navOrb.setSelectedItemId(-1);
         VodFragment fragment = (VodFragment) mManager.getFragment(0);
         if (fragment != null) fragment.openVodHome();
     }
@@ -511,10 +452,10 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void onBackInvoked() {
-        if (mChrome != null && mChrome.consumeBack()) {
+        if (mBinding.navOrb.consumeBack()) {
             return;
-        } else if (!mBinding.navigation.getMenu().findItem(R.id.vod).isVisible()) {
-            setNavigation();
+        } else if (mChrome != null && mChrome.consumeBack()) {
+            return;
         } else if (returnVodFromEnhance && mManager.isVisible(3)) {
             returnVodFromEnhance = false;
             change(0);

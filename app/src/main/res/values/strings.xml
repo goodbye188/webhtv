@@ -1,7 +1,7 @@
 <resources xmlns:xliff="http://schemas.android.com/apk/res-auto">
 
     <!-- App -->
-   <string name="app_name">默影视</string>
+   <string name="app_name">AVstar</string>
    <string name="setting_app_branding">App icon</string>
     <string name="app_branding_icon_current">Default icon</string>
     <string name="app_branding_icon_history">Original icon</string>
@@ -3111,3 +3111,36 @@
     <string name="plugin_manager_perm_episode_data">Episode data (plugin.data.episode)</string>
     <string name="plugin_panel_title">Plugin panel</string>
 </resources>
+        <!-- 代理订阅（照抄星落 ProxySubscriptionDialog） -->
+        <string name="setting_proxy_subscription">Proxy Subscription</string>
+        <string name="proxy_sub_url">Subscription URL</string>
+        <string name="proxy_sub_enable">Enable proxy subscription</string>
+        <string name="proxy_sub_update">Update</string>
+        <string name="proxy_sub_test">Test</string>
+        <string name="proxy_sub_auto">Auto</string>
+        <string name="proxy_sub_nodes">Nodes</string>
+        <string name="proxy_sub_kernel_log">Kernel log</string>
+        <string name="proxy_sub_kernel_log_count">%1$d lines</string>
+        <string name="proxy_sub_kernel_log_hint">Connection lines appear after the core starts. Updates every 1.5s.</string>
+        <string name="proxy_sub_kernel_log_empty">Kernel log is empty</string>
+        <string name="proxy_sub_kernel_log_refresh">Refresh</string>
+        <string name="proxy_sub_kernel_log_copy">Copy</string>
+        <string name="proxy_sub_sort_hint">Sorted by latency, fastest first. Untested nodes go last.</string>
+        <string name="proxy_sub_status">Total %1$d nodes · tested %2$d</string>
+        <string name="proxy_sub_empty">Please enter subscription URL</string>
+        <string name="proxy_sub_no_node">No available node</string>
+        <string name="proxy_sub_parsed">Parsed %1$d nodes, please select</string>
+        <string name="proxy_sub_no_supported">Parsed %1$d nodes. Tap Test to find fastest, or pick from Nodes</string>
+        <string name="proxy_sub_select">Select</string>
+        <string name="proxy_sub_selected">Selected: %1$s</string>
+        <string name="proxy_sub_hint">HTTP/SOCKS nodes are used directly. Clash VMess/VLESS/Trojan/SS/Hysteria2/AnyTLS nodes are routed through embedded mihomo.</string>
+        <string name="proxy_sub_need_core">Use Auto for encrypted nodes; embedded mihomo will pick the route</string>
+        <string name="proxy_sub_test_ok">Latency: %1$d ms</string>
+        <string name="proxy_sub_test_done">Test complete: fastest %1$s</string>
+        <string name="proxy_sub_test_fail">Test failed</string>
+        <string name="proxy_sub_connect_fail">Connection failed, try another node</string>
+        <string name="proxy_sub_fail">Subscription update failed</string>
+        <string name="proxy_sub_push">QR Push</string>
+        <string name="proxy_sub_push_title">Proxy Push</string>
+        <string name="proxy_sub_push_hint">Open the address and paste the subscription URL. It refreshes automatically after push.</string>
+    </resources>

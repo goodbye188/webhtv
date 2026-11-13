@@ -242,6 +242,23 @@ public class Migrations {
         }
     };
 
+    /**
+     * 收藏分组：Keep 表新增 `group` 列，老数据自动归到空分组（未分组）。
+     * 兼容旧 AVstar 46 库：其 Config 缺 interfaceKey/urlsJson，这里防御性补齐，
+     * 使任何 48 库升级后结构都与 49.json 一致。
+     */
+    public static final Migration MIGRATION_48_49 = new Migration(48, 49) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            addColumnIfMissing(database, "Keep", "group",
+                    "ALTER TABLE Keep ADD COLUMN `group` TEXT DEFAULT ''");
+            addColumnIfMissing(database, "Config", "interfaceKey",
+                    "ALTER TABLE Config ADD COLUMN `interfaceKey` TEXT");
+            addColumnIfMissing(database, "Config", "urlsJson",
+                    "ALTER TABLE Config ADD COLUMN `urlsJson` TEXT");
+        }
+    };
+
     private static void addColumnIfMissing(
             SupportSQLiteDatabase database,
             String table,

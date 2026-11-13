@@ -825,6 +825,56 @@ public class Setting {
      * 「关于」对话框与探测线程可能同时进来，两边都看到旧键存在，后写的 {@code putGithubProxy}
      * 会盖掉前一次已经扩好的列表。窗口只有升级后第一次读，但那正是唯一一次机会。
      */
+    // ---------------- 代理订阅（照抄星落 12 方法，key 与默认值逐字核对 smali） ----------------
+
+    public static String getProxySubscriptionConfig() {
+        return Prefers.getString("proxy_subscription_config", "");
+    }
+
+    public static void putProxySubscriptionConfig(String config) {
+        Prefers.put("proxy_subscription_config", config);
+    }
+
+    public static String getProxySubscriptionUrl() {
+        return Prefers.getString("proxy_subscription_url", "");
+    }
+
+    public static void putProxySubscriptionUrl(String url) {
+        Prefers.put("proxy_subscription_url", url);
+    }
+
+    public static String getProxySubscriptionCoreName() {
+        return Prefers.getString("proxy_subscription_core_name", "");
+    }
+
+    public static void putProxySubscriptionCoreName(String coreName) {
+        Prefers.put("proxy_subscription_core_name", coreName);
+    }
+
+    public static String getProxySubscriptionSelected() {
+        return Prefers.getString("proxy_subscription_selected", "");
+    }
+
+    public static void putProxySubscriptionSelected(String selected) {
+        Prefers.put("proxy_subscription_selected", selected);
+    }
+
+    public static String getProxySubscriptionNodes() {
+        return Prefers.getString("proxy_subscription_nodes", "");
+    }
+
+    public static void putProxySubscriptionNodes(String nodes) {
+        Prefers.put("proxy_subscription_nodes", nodes);
+    }
+
+    public static boolean isProxySubscriptionEnabled() {
+        return Prefers.getBoolean("proxy_subscription_enabled", false);
+    }
+
+    public static void putProxySubscriptionEnabled(boolean enabled) {
+        Prefers.put("proxy_subscription_enabled", enabled);
+    }
+
     private static synchronized void migrateLegacyGithubProxy() {
         if (!Prefers.getPrefers().contains("update_github_proxy")) return;
 
@@ -1651,5 +1701,32 @@ public class Setting {
 
     public static void putSearchSimilarity(int percent) {
         Prefers.put("search_similarity", Math.max(0, Math.min(100, percent)));
+    }
+
+    /** 底部导航栏形态：true=胶囊型（悬浮+可滚动隐藏），false=固定型。默认胶囊型。 */
+    public static boolean isHomeCapsule() {
+        return Prefers.getBoolean("home_capsule", true);
+    }
+
+    public static void putHomeCapsule(boolean value) {
+        Prefers.put("home_capsule", value);
+    }
+
+    /** 悬浮光圈位置，按父容器可拖动范围的千分比存，-1=未设置走默认位置。
+     *  存相对值而不是像素，换分辨率、横竖屏、折叠屏展开后都能还原到视觉等价的位置。 */
+    public static int getHomeNavOrbX() {
+        return Prefers.getInt("home_nav_orb_x", -1);
+    }
+
+    public static void putHomeNavOrbX(int value) {
+        Prefers.put("home_nav_orb_x", value);
+    }
+
+    public static int getHomeNavOrbY() {
+        return Prefers.getInt("home_nav_orb_y", -1);
+    }
+
+    public static void putHomeNavOrbY(int value) {
+        Prefers.put("home_nav_orb_y", value);
     }
 }

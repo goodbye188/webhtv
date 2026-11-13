@@ -1,6 +1,7 @@
 package com.fongmi.android.tv.lab;
 
 import android.app.Activity;
+import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -551,13 +552,14 @@ public final class LabActions {
     }
 
     private static void openWebView(Activity activity, LabModels.Click click, String url) {
-        boolean fullscreen = "fullscreen".equals(click.style);
-        int width = click.width > 0 ? click.width : 90;
-        int height = click.height > 0 ? click.height : 80;
+        // 全屏 WebView 面板: 普通 Dialog(非 MaterialAlertDialog) + 全屏窗口,
+        // 按钮栏在布局内(底部 关闭/浏览器打开), 避免 AlertDialog 按钮栏在全屏下错位。
         View root = activity.getLayoutInflater().inflate(R.layout.dialog_lab_webview, null, false);
         ProgressBar progress = root.findViewById(R.id.progress);
         WebView webView = root.findViewById(R.id.webView);
         TextView content = root.findViewById(R.id.content);
+        android.widget.Button btnClose = root.findViewById(R.id.btnClose);
+        android.widget.Button btnBrowser = root.findViewById(R.id.btnBrowser);
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setUseWideViewPort(true);
@@ -566,39 +568,47 @@ public final class LabActions {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
                 progress.setProgress(newProgress);
-                progress.setVisibility(newProgress >= 100 ? android.view.View.GONE : android.view.View.VISIBLE);
+                progress.setVisibility(newProgress >= 100 && newProgress > 0 ? android.view.View.GONE : android.view.View.VISIBLE);
             }
         });
-        webView.setWebViewClient(new WebViewClient());
+        // 加载失败时显示明确的错误页, 不再是一片黑看不出发生了什么
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                String html = "<html><body style='background:#101216;color:#E6E8EC;" +
+                        "font-family:sans-serif;padding:48px;font-size:16px;'>" +
+                        "<p style='font-size:20px;font-weight:bold'>网页加载失败</p>" +
+                        "<p>地址: " + (failingUrl == null ? url : failingUrl) + "</p>" +
+                        "<p>原因: " + (description == null ? "未知" : description) + "</p>" +
+                        "<p>可能网络不通, 可点底部「浏览器打开」换系统浏览器试。</p></body></html>";
+                view.loadUrl("data:text/html;charset=utf-8," + android.net.Uri.encode(html));
+            }
+        });
         if (click.content != null && !click.content.isEmpty()) {
             content.setText(click.content);
             content.setVisibility(View.VISIBLE);
         }
-        AlertDialog dialog = new WebHtvAlertDialogBuilder(activity, R.style.Theme_App_Lab_Dialog)
-                .setTitle(click.title == null ? "WebView" : click.title)
-                .setView(root)
-                .setNegativeButton("关闭", (d, w) -> {
-                    webView.destroy();
-                    d.dismiss();
-                })
-                .setPositiveButton("浏览器打开", (d, w) -> {
-                    try {
-                        activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-                    } catch (Exception ignored) {
-                    }
-                    webView.destroy();
-                    d.dismiss();
-                })
-                .create();
-        dialog.show();
+        Dialog dialog = new Dialog(activity, R.style.Theme_App_Lab_Dialog);
+        dialog.setContentView(root);
+        btnClose.setOnClickListener(v -> {
+            webView.destroy();
+            dialog.dismiss();
+        });
+        btnBrowser.setOnClickListener(v -> {
+            try {
+                activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+            } catch (Exception ignored) {
+            }
+            webView.destroy();
+            dialog.dismiss();
+        });
         if (dialog.getWindow() != null) {
             WindowManager.LayoutParams params = dialog.getWindow().getAttributes();
-            int w = activity.getResources().getDisplayMetrics().widthPixels;
-            int h = activity.getResources().getDisplayMetrics().heightPixels;
-            params.width = fullscreen ? WindowManager.LayoutParams.MATCH_PARENT : (int) (w * width / 100f);
-            params.height = fullscreen ? WindowManager.LayoutParams.MATCH_PARENT : (int) (h * height / 100f);
+            params.width = WindowManager.LayoutParams.MATCH_PARENT;
+            params.height = WindowManager.LayoutParams.MATCH_PARENT;
             dialog.getWindow().setAttributes(params);
         }
+        dialog.show();
         webView.loadUrl(url);
     }
 

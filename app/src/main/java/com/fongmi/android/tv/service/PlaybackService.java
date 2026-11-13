@@ -36,6 +36,7 @@ import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.playback.PlaybackEventCollector;
 import com.fongmi.android.tv.player.PlaybackOwnershipKeys;
 import com.fongmi.android.tv.player.PlayerManager;
+import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.player.engine.PlaySpec;
 import com.fongmi.android.tv.player.lyrics.DesktopLyricsWindow;
 import com.fongmi.android.tv.player.lyrics.LyricsLine;
@@ -267,6 +268,8 @@ private AudioHistory.Record audioHistoryRecord;
 
     public void suspend() {
         if (SpiderDebug.isEnabled()) SpiderDebug.log("playback-lifecycle", "service suspend %s", serviceState());
+        // 播放已停（后台播放关闭 / 挂起），顺带停掉迅雷后台下载；缓存保留。
+        Source.get().pause();
         stopAndClear();
         removeForeground();
     }
@@ -276,6 +279,8 @@ private AudioHistory.Record audioHistoryRecord;
         if (SpiderDebug.isEnabled()) SpiderDebug.log("playback-lifecycle", "service shutdown %s", serviceState());
         running = false;
         keepAlive = false;
+        // 退出播放/关服务：停止迅雷后台下载，保留已下载缓存。
+        Source.get().pause();
         syncAudioHistoryProgress(true);
         clearAudioHistoryRecord();
         player.prepareTerminalRelease();

@@ -14,6 +14,7 @@ import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.event.CatWebEvent;
 import com.fongmi.android.tv.player.Source;
+import com.fongmi.android.tv.player.extractor.Thunder;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.SiteHealthStore;
 import com.fongmi.android.tv.utils.PushParser;
@@ -153,6 +154,13 @@ public class SiteApi {
         PushParser.Parsed push = PUSH.equals(key) ? PushParser.fromId(id) : null;
         String requestId = push == null ? id : push.getUrl();
         if (push != null && (site.isEmpty() || isLocalFileUrl(requestId))) return pushDetail(id, push);
+        // 磁力/迅雷/ed2k/torrent 必须走 pushDetail，让 Thunder 自己解析出选集。
+        // 否则会被当成普通详情请求丢给爬虫（site.recent().spider().detailContent），
+        // 爬虫不认识这些协议，返回空/失败后壳子就把磁力当片名去搜索换源 ——
+        // 表现是「点了没反应，然后满屏站源在搜这条 magnet」。
+        // push 是先进详情页再进播放，所以这里和 playerContent() 两处都要判，
+        // 只改播放那处完全无效。
+        if (push != null && Thunder.Parser.match(requestId)) return pushDetail(id, push);
 
         String sourceKey = detailCacheSourceKey(key, site);
         if (refresh) VodDetailCache.invalidateContent(sourceKey, id);
@@ -296,6 +304,17 @@ public class SiteApi {
         Site site = VodConfig.get().getSite(key);
         String requestId = PUSH.equals(key) ? resolvePushPlayerUrl(id) : id;
         if (PUSH.equals(key) && (site.isEmpty() || isLocalFileUrl(requestId))) return pushPlayer(flag, requestId, playerType, source);
+        // 磁力/迅雷/ed2k/torrent 交给 Thunder 自己解析，不能当普通播放请求丢给爬虫 ——
+        // 爬虫不认识这些协议，只会返回失败，然后触发 fallbackPushPlayer 换源搜索。
+        // 之前只改Thunder.fetch() 是无效的：推送的 magnet 根本走不到那里，日志里表现为
+        // 没有任何 thunder 记录，magnet 反而进了 searchContent 被当关键词搜片。
+        // 过滤（排除广告等非媒体文件）由迅雷 SDK 的 TorrentInfo.getMedias() 内部完成，
+        // 走 pushPlayer 与详情页的 Thunder.Parser 是同一套逻辑，选集结果一致。
+        if (PUSH.equals(key) && Thunder.Parser.match(requestId)) return pushPlayer(flag, requestId, playerType, source);
+        // 详情页不再同步展开磁力（见 Source.parse），选集里保留的就是原始
+        // magnet/ed2k/thunder/torrent。点播时直接交给 Thunder，不经过爬虫：
+        // 很多源只是把 id 原样返回，个别源甚至不认识 magnet，绕过去最稳。
+        if (Thunder.Parser.match(requestId) && !Thunder.Parser.isTorrent(requestId)) return pushPlayer(flag, requestId, playerType, source);
         if (site.getType() == 3) {
             String fallbackReason;
             try {
@@ -352,6 +371,10 @@ public class SiteApi {
     }
 
     static String resolvePushPlayerUrl(String id) {
+        String value = id == null ? "" : id.trim();
+        // 已经是完整链接（尤其是 dn 里带空格的 magnet）就不要再走 sniffUrl，
+        // 否则会被 \\S+ 从空格处截断，后半段参数全丢。
+        if (Thunder.Parser.match(value)) return value;
         return PushParser.fromId(id).getUrl();
     }
 
@@ -396,7 +419,9 @@ public class SiteApi {
         vod.setPlayUrl(push.getUrl());
         vod.setPlayFrom(ResUtil.getString(R.string.push));
         vod.setPic(ResUtil.getString(R.string.push_image));
-        Source.get().parse(vod.setFlags());
+        // 推送只有一条磁力，仍展开成文件列表（单条解析最多 10 秒）；
+        // 普通站点详情页走默认的懒解析，避免整页卡在磁力上。
+        Source.get().parse(vod.setFlags(), true);
         return Result.vod(vod);
     }
 

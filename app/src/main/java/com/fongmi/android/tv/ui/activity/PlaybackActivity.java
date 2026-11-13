@@ -46,6 +46,7 @@ import com.fongmi.android.tv.player.PlaybackOwnershipKeys;
 import com.fongmi.android.tv.player.PlaybackServiceReleasePolicy;
 import com.fongmi.android.tv.player.PlaybackTelemetry;
 import com.fongmi.android.tv.player.PlayerManager;
+import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.player.VideoAspectMode;
 import com.fongmi.android.tv.player.engine.PlaySpec;
 import com.fongmi.android.tv.player.exo.ExoOutputModeManager;
@@ -172,6 +173,8 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
         }
         if (isOwner()) mService.shutdown();
         else mService.suspend();
+        // 退出播放页（含非 owner 的兜底路径）：停后台下载，保留缓存。
+        Source.get().pause();
     }
 
     protected void updateNavigationKey() {

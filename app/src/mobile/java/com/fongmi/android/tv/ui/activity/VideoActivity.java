@@ -18,6 +18,7 @@ import android.os.Looper;
 import android.os.Parcelable;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.text.InputFilter;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
 import android.util.TypedValue;
@@ -33,6 +34,7 @@ import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
+import android.widget.EditText;
 import android.widget.TextView;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -155,6 +157,7 @@ import com.fongmi.android.tv.ui.custom.CustomSeekView;
 import com.fongmi.android.tv.ui.custom.PlayerOsdController;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.ui.dialog.AdRuleEditDialog;
+import com.fongmi.android.tv.ui.dialog.KeepGroupsDialog;
 import com.fongmi.android.tv.ui.dialog.CastDialog;
 import com.fongmi.android.tv.ui.dialog.CodecCapabilityDialog;
 import com.fongmi.android.tv.ui.dialog.ControlDialog;
@@ -3973,11 +3976,59 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
 
     private void onKeep() {
         Keep keep = Keep.find(getHistoryKey());
-        Notify.show(keep != null ? R.string.keep_del : R.string.keep_add);
-        if (keep != null) keep.delete();
-        else createKeep();
-        checkKeepImg();
-        updateTmdbKeepState();
+        if (keep != null) {
+            Notify.show(R.string.keep_del);
+            keep.delete();
+            checkKeepImg();
+            updateTmdbKeepState();
+        } else {
+            showCollectGroupDialog();
+        }
+    }
+
+    /** 手动新增收藏时弹分组选择：未分组 / 已有分组 / 新建分组（上方输入框填名字）。 */
+    private void showCollectGroupDialog() {
+        List<String> groups = KeepGroupsDialog.getGroups();
+        List<String> options = new ArrayList<>();
+        options.add(getString(R.string.group_ungrouped));
+        options.addAll(groups);
+        final int newGroupIndex = options.size();
+        options.add(getString(R.string.group_new));
+        String[] items = options.toArray(new String[0]);
+
+        EditText newGroupInput = new EditText(this);
+        newGroupInput.setHint(R.string.group_name_hint);
+        newGroupInput.setSingleLine(true);
+        newGroupInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(20)});
+        newGroupInput.setPadding(dp(16), dp(10), dp(16), dp(10));
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.group_move_to)
+                .setItems(items, (dialog, which) -> {
+                    if (which == newGroupIndex) {
+                        String name = newGroupInput.getText().toString().trim();
+                        if (name.isEmpty()) {
+                            Notify.show(R.string.group_name_hint);
+                            return;
+                        }
+                        List<String> all = KeepGroupsDialog.getGroups();
+                        if (!all.contains(name)) {
+                            all.add(name);
+                            KeepGroupsDialog.putGroups(all);
+                        }
+                        createKeep(name);
+                    } else {
+                        createKeep(which == 0 ? "" : options.get(which));
+                    }
+                    Notify.show(R.string.keep_add);
+                    checkKeepImg();
+                    updateTmdbKeepState();
+                    RefreshEvent.keep();
+                    dialog.dismiss();
+                })
+                .setView(newGroupInput)
+                .setNegativeButton(R.string.dialog_negative, null)
+                .show();
     }
 
     private void checkPlay() {
@@ -6382,7 +6433,11 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         mBinding.control.fullscreen.setImageResource(isFullscreen() ? R.drawable.ic_control_fullscreen_exit : R.drawable.ic_control_fullscreen);
     }
 
-    private void createKeep() {
+    private int dp(int value) {
+        return (int) (value * getResources().getDisplayMetrics().density);
+    }
+
+    private void createKeep(String group) {
         Keep keep = new Keep();
         keep.setKey(getHistoryKey());
         keep.setCid(VodConfig.getCid());
@@ -6390,6 +6445,7 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         keep.setVodName(mHistory.getVodName());
         keep.setSiteName(getSite().getDisplayName());
         keep.setCreateTime(System.currentTimeMillis());
+        keep.setGroup(group == null ? "" : group);
         keep.save();
     }
 

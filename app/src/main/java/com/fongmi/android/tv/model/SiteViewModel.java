@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.api.SiteApi;
+import com.fongmi.android.tv.api.cache.HomeCache;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
@@ -136,8 +137,19 @@ public class SiteViewModel extends ViewModel {
         return this;
     }
 
+    /**
+     * 「先显旧再刷新」：先把上次成功的首页数据 postValue（秒出 tabs 和首页影片），
+     * 再正常走网络刷新；新结果落地后回写缓存，失败不动缓存。
+     */
     public void homeContent() {
-        execute(TaskType.RESULT, result, () -> SiteApi.homeContent(VodConfig.get().getHome()));
+        execute(TaskType.RESULT, result, () -> {
+            Site site = VodConfig.get().getHome();
+            Result cached = HomeCache.get(site.getKey());
+            if (cached != null) result.postValue(cached);
+            Result fresh = SiteApi.homeContent(site);
+            HomeCache.put(site.getKey(), fresh);
+            return fresh;
+        });
     }
 
     public void categoryContent(String key, String tid, String page, boolean filter, HashMap<String, String> extend) {

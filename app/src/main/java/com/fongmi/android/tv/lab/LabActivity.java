@@ -393,6 +393,9 @@ public class LabActivity extends AppCompatActivity implements LabPackageAdapter.
         View navEntryRow = root.findViewById(R.id.navEntryRow);
         MaterialSwitch navEntry = root.findViewById(R.id.navEntrySwitch);
         navEntryRow.setVisibility(Util.isMobile() ? View.VISIBLE : View.GONE);
+        View navCapsuleRow = root.findViewById(R.id.navCapsuleRow);
+        MaterialSwitch navCapsule = root.findViewById(R.id.navCapsuleSwitch);
+        navCapsuleRow.setVisibility(Util.isMobile() ? View.VISIBLE : View.GONE);
         String[] items = {getString(R.string.lab_source_local), getString(R.string.lab_source_url)};
         // 适配器必须用弹窗主题上下文：ArrayAdapter 用自身 context 解析 item 布局，
         // 用 Activity 上下文（Theme.App.Lab，固定深色）会让下拉项永远是白字，
@@ -417,6 +420,11 @@ public class LabActivity extends AppCompatActivity implements LabPackageAdapter.
         foreground.setChecked(LabConfig.get().getForeground());
         battery.setChecked(LabConfig.get().getBattery());
         navEntry.setChecked(LabConfig.get().getNavEntry());
+        navCapsule.setChecked(Setting.isHomeCapsule());
+        navCapsule.setOnCheckedChangeListener((v, checked) -> {
+            Setting.putHomeCapsule(checked);
+            recreate();
+        });
         proxy.setChecked(LabConfig.get().getGlobalProxy());
         proxyPort.setText(String.valueOf(LabConfig.get().getGlobalProxyPort()));
         proxyNoProxy.setText(LabConfig.get().getGlobalProxyNoProxy());

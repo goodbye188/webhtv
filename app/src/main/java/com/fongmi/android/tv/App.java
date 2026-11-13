@@ -26,6 +26,7 @@ import com.fongmi.android.tv.player.mpv.PlaybackRecoveryMonitor;
 import com.fongmi.android.tv.plugin.PluginBootstrap;
 import com.fongmi.android.tv.plugin.PluginController;
 import com.fongmi.android.tv.plugin.PluginHostEvents;
+import com.fongmi.android.tv.proxy.ProxySubscriptionManager;
 import com.fongmi.android.tv.remote.RemoteAgent;
 import com.fongmi.android.tv.setting.AppBranding;
 import com.fongmi.android.tv.setting.PlayerSetting;
@@ -142,6 +143,25 @@ public class App extends Application implements Application.ActivityLifecycleCal
         }
         Notify.createChannel();
         ProxySetting.apply();
+        // 启动即拉起代理内核并接上次选中的节点（对齐星落：打开软件→启动核心→连接节点→爬虫源探测端口拉数据）。
+        // 不调的话重启后 18890 不监听，必须手动点一次「选择节点」爬虫才有数据。
+        // applySaved() 幂等且内部有 isRunning() 保护，放后台线程不阻塞启动。
+        Task.execute(() -> {
+            try {
+                ProxySubscriptionManager.get().applySaved();
+            } catch (Throwable e) {
+                android.util.Log.e("App", "applySaved on startup failed", e);
+            }
+        });
+        // 内核运行中崩溃 → 持久弹窗告警（App 级注册，不持有 Activity 引用，避免泄漏）
+        com.fongmi.android.tv.proxy.MihomoManager.get().onCrash = log -> {
+            String[] lines = (log == null ? "" : log).split("\n");
+            StringBuilder sb = new StringBuilder();
+            for (int i = Math.max(0, lines.length - 8); i < lines.length; i++) sb.append(lines[i]).append('\n');
+            String tail = sb.toString().trim();
+            android.util.Log.e("MihomoManager", "core crashed unexpectedly:\n" + tail);
+            Notify.alert("代理内核已崩溃", "请重新选择节点以恢复代理。\n\n内核日志:\n" + tail);
+        };
         registerActivityLifecycleCallbacks(this);
         registerContentHandlers();
         resumeBackgroundServices();

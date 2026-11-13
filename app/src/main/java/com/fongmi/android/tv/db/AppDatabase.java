@@ -48,7 +48,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public abstract class AppDatabase extends RoomDatabase {
 
     // VERSION = 47 was the pre-identity-alias schema; 48 adds migration clues.
-    public static final int VERSION = 48;
+    // 49 = AVstar 收藏分组（Keep.group），并兼容旧 AVstar 46 库（防御性补 Config 列）。
+    public static final int VERSION = 49;
     public static final String NAME = "tv";
     public static final String SYMBOL = "@@@";
     private static final int BACKUP_KEEP_COUNT = 7;
@@ -193,6 +194,7 @@ public abstract class AppDatabase extends RoomDatabase {
                 .addMigrations(Migrations.MIGRATION_45_46)
                 .addMigrations(Migrations.MIGRATION_46_47)
                 .addMigrations(Migrations.MIGRATION_47_48)
+                .addMigrations(Migrations.MIGRATION_48_49)
                 .openHelperFactory(new IntegrityRecoveringOpenHelperFactory(new FrameworkSQLiteOpenHelperFactory()))
                 .fallbackToDestructiveMigration(true)
                 .allowMainThreadQueries().build();

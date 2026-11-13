@@ -3,10 +3,8 @@ package com.fongmi.android.tv.ui.activity;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
-import android.widget.RelativeLayout;
 
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -40,7 +38,6 @@ final class WebHomeChromeController {
     private final HomeActivity activity;
     private final ActivityHomeBinding binding;
     private final Host host;
-    private final int navigationBaseHeight;
     private WindowInsetsCompat insets;
     private WebHomeChromeOptions options;
     private WebHomeViewport viewport;
@@ -52,7 +49,6 @@ final class WebHomeChromeController {
         this.activity = activity;
         this.binding = binding;
         this.host = host;
-        this.navigationBaseHeight = binding.navigation.getLayoutParams().height;
         if (!Setting.isWebHomeFullscreen()) {
             this.mode = WebHomeChrome.NORMAL;
             this.previousMode = WebHomeChrome.NORMAL;
@@ -175,24 +171,15 @@ final class WebHomeChromeController {
     }
 
     private void applyLayout() {
-        boolean active = isActive();
-        boolean normal = !active || WebHomeChrome.NORMAL.equals(mode);
-        binding.navigation.setVisibility(normal ? View.VISIBLE : View.GONE);
+        boolean normal = !isActive() || WebHomeChrome.NORMAL.equals(mode);
+        // 沉浸模式收起光圈。位置和 insets 全部由 NavOrbView 内部维护，
+        // 这里只切显隐，不参与它的布局计算，避免两边互相覆盖。
+        binding.navOrb.setOrbVisible(normal);
         WebHomeViewport current = buildViewport();
         int top = normal ? current.getSafeTop() : 0;
-        int bottom = normal ? current.getSafeBottom() : 0;
-        binding.container.setPadding(0, top, 0, 0);
-        binding.navigation.setPadding(0, 0, 0, bottom);
-        ViewGroup.LayoutParams params = binding.navigation.getLayoutParams();
-        int height = navigationBaseHeight + bottom;
-        if (params.height != height) {
-            params.height = height;
-            binding.navigation.setLayoutParams(params);
-        }
-        RelativeLayout.LayoutParams container = (RelativeLayout.LayoutParams) binding.container.getLayoutParams();
-        if (binding.navigation.getVisibility() == View.VISIBLE) container.addRule(RelativeLayout.ABOVE, binding.navigation.getId());
-        else container.removeRule(RelativeLayout.ABOVE);
-        binding.container.setLayoutParams(container);
+        // 唯一写入方：顶部安全区落在 root 上，bottom 恒为 0 让内容铺到屏幕底部。
+        // 光圈是浮层，内容不为它让位（对齐星落）。
+        binding.getRoot().setPadding(0, top, 0, 0);
     }
 
     private void dispatchViewport() {

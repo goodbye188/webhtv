@@ -23,6 +23,7 @@ import androidx.viewpager.widget.ViewPager;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.api.cache.HomeCache;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Class;
 import com.fongmi.android.tv.bean.Config;
@@ -34,6 +35,7 @@ import com.fongmi.android.tv.databinding.FragmentVodBinding;
 import com.fongmi.android.tv.event.CastEvent;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
+import com.fongmi.android.tv.event.ScrollEvent;
 import com.fongmi.android.tv.event.StateEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.impl.ConfigListener;
@@ -141,6 +143,8 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         mBinding.appBar.addOnOffsetChangedListener((appBarLayout, verticalOffset) -> {
             int range = appBarLayout.getTotalScrollRange();
             if (range <= 0) return;
+            // AppBar 展开/折叠时也发滚动事件，让胶囊导航栏跟随显隐（对齐星落 VodFragment）
+            ScrollEvent.post(verticalOffset > 0 ? 100 : -100);
             float factor = Math.abs(verticalOffset * 1f / range);
             int padding = (int) (ResUtil.dp2px(12) * factor);
             if (mBinding.type.getPaddingTop() == padding) return;
@@ -185,6 +189,13 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
 
     private void setAdapter(Result result) {
         if (mWeb != null && mWeb.isVisible()) return;
+        // 「先显旧再刷新」：网络刷新失败时保留已显示的旧数据，不清屏
+        if (result.getTypes().isEmpty() && mResult != null && mAdapter.getItemCount() > 0) {
+            hideProgress();
+            return;
+        }
+        // 覆盖旧数据前先清空，避免 tabs 叠加
+        mAdapter.clear();
         mAdapter.addAll(mResult = result);
         notifyPagerAdapter();
         mBinding.typeMore.setVisibility(View.GONE);
@@ -289,9 +300,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         if (item.getItemId() == R.id.refresh) {
             if (mWeb != null && mWeb.isVisible()) mWeb.reload();
             else homeContent();
-        } else if (item.getItemId() == R.id.keep) KeepActivity.start(requireActivity());
-        else if (item.getItemId() == R.id.search) SearchActivity.start(requireActivity());
-        else if (item.getItemId() == R.id.history) HistoryActivity.start(requireActivity());
+        } else if (item.getItemId() == R.id.search) SearchActivity.start(requireActivity());
         else if (item.getItemId() == R.id.sync) OneKeySyncDialog.create().show(requireActivity());
         else if (item.getItemId() == R.id.push_apk) ApkPushDialog.create().listener(this::onApkDeviceSelected).show(requireActivity());
         else if (item.getItemId() == R.id.push_play) PushPlayDialog.create().listener(this::onPushPlayDeviceSelected).show(requireActivity());
@@ -382,12 +391,13 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
 
     private void homeContent() {
         requestNormalChrome();
-        showProgress();
         if (mWeb != null) mWeb.hide();
         updateToolbarMenu();
         clearPagerTypes();
         mBinding.pager.setAdapter(new PageAdapter(getChildFragmentManager()));
         setFabVisible(0);
+        // 有旧数据缓存时不转圈：缓存会立即渲染，随后静默刷新
+        if (!HomeCache.has(getHome().getKey())) showProgress();
         mViewModel.homeContent();
     }
 

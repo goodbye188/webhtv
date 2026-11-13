@@ -152,3 +152,10 @@
 
 # sherpa-onnx JNI resolves Java class and method names directly.
 -keep class com.k2fsa.sherpa.onnx.** { *; }
+
+# AVstar 代理订阅模块：R8 不得混淆，否则真机 start/select 调用不一致
+-keep class com.fongmi.android.tv.proxy.** { *; }
+-keep class com.github.catvod.bean.Proxy { *; }
+-keep class com.github.catvod.net.OkProxySelector { *; }
+-keep class com.github.catvod.net.ProxyAuthenticator { *; }
+-keep class com.fongmi.android.tv.ui.dialog.ProxySubscriptionDialog { *; }
