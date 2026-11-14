@@ -73,7 +73,13 @@ public class OkProxySelector extends ProxySelector {
         String host = uri.getHost();
         if (proxy.isEmpty()) return fallback(uri, "no-rule");
         if (host == null) return fallback(uri, "no-host");
-        if ("127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host)) return fallback(uri, "local-target");
+        // 环回目标强制直连：不能咨询系统代理（Android 全局 http_proxy 一旦被设置，
+        // system.select(127.0.0.1) 会把壳子自己的环回调用也送进代理，mihomo 拒收环回
+        // 目标 → 网关 ping 桥失败 → 端口挑选螺旋。环回到环回必须永远直连。）
+        if ("127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host) || "::1".equals(host)) {
+            logFallback(uri, "local-target", 1);
+            return List.of(java.net.Proxy.NO_PROXY);
+        }
         for (Proxy item : proxy) {
             for (String rule : item.getHosts()) {
                 if (!matches(host, rule)) continue;

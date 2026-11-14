@@ -139,7 +139,10 @@ public class TlsClientManager {
 
     private boolean ping(int p) {
         if (p < PORT_MIN || p > PORT_MAX) return false;
-        OkHttpClient client = new OkHttpClient.Builder().callTimeout(1, TimeUnit.SECONDS).build();
+        // NO_PROXY：环回 ping 绝不能被系统代理劫走（Android 全局 http_proxy 时
+        // 默认选择器会把 127.0.0.1 也送进代理，ping 永远失败）。
+        OkHttpClient client = new OkHttpClient.Builder().callTimeout(1, TimeUnit.SECONDS)
+                .proxy(java.net.Proxy.NO_PROXY).build();
         Request request = new Request.Builder().url("http://127.0.0.1:" + p + PING).build();
         try (Response response = client.newCall(request).execute()) {
             ResponseBody body = response.body();

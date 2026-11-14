@@ -129,7 +129,9 @@ public class GatewayWebViewClient extends WebViewClient {
             String target = gateway(url, requestHeaders, post);
             if (post) target = target + "&body=" + encode(body);
 
-            conn = (HttpURLConnection) new URL(target).openConnection();
+            // NO_PROXY：Android 全局 http_proxy 一旦被设置，默认选择器会把
+            // 127.0.0.1:9978 也送进代理，网关调用全挂。环回必须显式直连。
+            conn = (HttpURLConnection) new URL(target).openConnection(java.net.Proxy.NO_PROXY);
             conn.setRequestMethod(post ? "POST" : method);
             conn.setConnectTimeout(CONNECT_TIMEOUT);
             conn.setReadTimeout(READ_TIMEOUT);
