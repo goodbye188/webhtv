@@ -74,3 +74,38 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tlsclient/build.ps1
 # 产物自动写入 app/src/main/jniLibs/arm64-v8a/libtlsclient.so（仅 arm64-v8a）
 # go 工具链 D:\Go（1.22+），模块下载走 goproxy.cn；协议见 tlsclient/main.go 头注释
 ```
+
+---
+
+## WvProxy 与播放直链捕获（WvCaptureClient，2026-11-14 新增）
+
+针对 Cloudflare 风控站（supjav 等）把「过盾 / 取页 / 取播放直链」全放进真机
+WebView，绕开桥的 TLS 指纹封禁（CF error 1010）。两个新类都在
+`app/src/main/java/com/fongmi/android/tv/web/`。
+
+### WvProxy（进程内 WebView 代理覆盖，免权限）
+- androidx.webkit `ProxyController` 封装：`set(proxyAddr, Executor, Runnable)` /
+  `clear(Executor, Runnable)` / `supported()`；120 秒自动 clear 兜底。
+- py 侧用法：`W.set('127.0.0.1:%d' % port)` → 过盾/取页窗口内把 WebView 流量
+  打进 mihomo，`W.clear()` 解除。cookie 有效时静默无弹窗取页，失败再弹可视窗。
+
+### WvCaptureClient（播放直链捕获）
+- 真继承 `WebViewClient`，`shouldInterceptRequest` 旁路观察 `.m3u8/.mp4`，命中经
+  `OnHit` 接口回调 py。
+- **为什么放壳子**：Chaquopy 的 `dynamic_proxy` 只能代理接口，无法继承 Java
+  类（`class _Cap(WebViewClient)` 抛 `TypeError`）。故捕获逻辑在壳子，py 只
+  实现 `OnHit`。
+- 调试期把页面生命周期与全部请求打进 `SpiderDebug`（tag=`wv-cap`）。
+
+### py 源捕获流程（supjav_CF1.py `_wv_capture`）
+1. s1 解析页（`lk1.supremejav.com/supjav.php?l=`）有 `top==location` 检查，
+   **仅被 iframe 嵌入时才 `start_player()`** → 用 `loadDataWithBaseURL` 套一层
+   包装页把它嵌进 iframe（`loadUrl(url, dict)` 的 dict 不被 Chaquopy 转 Map，
+   需显式 `java.util.HashMap`，或干脆用包装页）。
+2. iframe 内 `?c=` 播放器页请求 m3u8 → `WvCaptureClient` 拦下 → 带 UA/Referer
+   header 喂给 mpv。实测 9 秒取直链。
+
+### 环回代理修复（同批提交）
+系统代理一设就会把壳子环回调用劫进 mihomo → 桥 ping 失败、端口螺旋。
+`OkProxySelector`（127.0.0.1/localhost/::1 强制 NO_PROXY）、`TlsClientManager.ping`、
+`GatewayWebViewClient.fetch` 三处显式 `Proxy.NO_PROXY`。
