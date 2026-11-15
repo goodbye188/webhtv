@@ -66,11 +66,12 @@
             android:paddingTop="10dp"
             android:paddingBottom="10dp"
             android:textColor="#202124"
-            android:textIsSelectable="true"
             android:textSize="10sp"
             tools:text="[TCP] 127.0.0.1:54888 --&gt; ininav.com:443 match GeoIP(cn) using DIRECT" />
 
     </ScrollView>
+    <!-- 注意：log 的 TextView 故意不加 textIsSelectable —— selectable 会让它变成可聚焦，
+         每次 setText 都触发 ScrollView 滚到子 View 顶部（视口反复跳顶）。复制全文走下面的「复制」按钮。 -->
 
     <LinearLayout
         android:layout_width="match_parent"

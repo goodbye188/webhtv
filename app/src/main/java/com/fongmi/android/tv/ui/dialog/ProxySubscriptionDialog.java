@@ -12,6 +12,7 @@ import android.text.TextUtils;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.ScrollView;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
@@ -316,7 +317,7 @@ public class ProxySubscriptionDialog extends BaseAlertDialog {
      * [TCP] 127.0.0.1:54888 --> ininav.com:443 match GeoIP(cn) using DIRECT
      *
      * 窗口开到接近全屏：日志行很长（节点名里还带延迟和带宽），窄了要横向拖。
-     * 每 1.5 秒拉一次并保持在底部，关掉自动停。
+     * 每 1.5 秒拉一次；只有本来就贴底才跟随滚动，往上翻看历史时不拽人。
      */
     private void onKernelLog(View view) {
         DialogKernelLogBinding logView = DialogKernelLogBinding.inflate(getLayoutInflater());
@@ -353,10 +354,20 @@ public class ProxySubscriptionDialog extends BaseAlertDialog {
     private void fillKernelLog(DialogKernelLogBinding view) {
         String log = com.fongmi.android.tv.proxy.MihomoManager.get().getLog();
         if (TextUtils.isEmpty(log)) log = getString(R.string.proxy_sub_kernel_log_empty);
+        // 内容没变就不重设文本：setText 会触发重布局 + 抢焦点滚动，白跳一次
+        if (log.contentEquals(view.log.getText().toString())) return;
         view.log.setText(log);
         view.meta.setText(getString(R.string.proxy_sub_kernel_log_count, log.split("\n").length));
-        // 保持贴底，新行才看得见
-        view.scroll.post(() -> view.scroll.fullScroll(View.FOCUS_DOWN));
+        // 只有本来就贴底才自动滚到底：用户往上翻看历史时别拽人
+        if (isScrolledToBottom(view.scroll)) view.scroll.post(() -> view.scroll.fullScroll(View.FOCUS_DOWN));
+    }
+
+    /** ScrollView 是否近似贴底：容差 40dp（约 3 行），避免差一像素判成"没贴底"导致跟随失效 */
+    private static boolean isScrolledToBottom(ScrollView scroll) {
+        View child = scroll.getChildAt(0);
+        if (child == null) return true;
+        int distance = child.getBottom() - (scroll.getHeight() + scroll.getScrollY());
+        return distance <= ResUtil.dp2px(40);
     }
 
     private void copyKernelLog(DialogKernelLogBinding view) {
