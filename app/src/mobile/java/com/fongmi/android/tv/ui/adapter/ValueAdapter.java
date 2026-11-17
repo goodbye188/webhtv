@@ -4,6 +4,7 @@ import android.view.LayoutInflater;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.fongmi.android.tv.bean.Filter;
@@ -18,11 +19,17 @@ public class ValueAdapter extends RecyclerView.Adapter<ValueAdapter.ViewHolder> 
     private final FilterListener listener;
     private final List<Value> mItems;
     private final String mKey;
+    private final Runnable onChanged;
 
     public ValueAdapter(FilterListener listener, Filter filter) {
+        this(listener, filter, null);
+    }
+
+    public ValueAdapter(FilterListener listener, Filter filter, @Nullable Runnable onChanged) {
         this.listener = listener;
         this.mItems = filter.getValue();
         this.mKey = filter.getKey();
+        this.onChanged = onChanged;
     }
 
     @Override
@@ -47,6 +54,7 @@ public class ValueAdapter extends RecyclerView.Adapter<ValueAdapter.ViewHolder> 
     private void onItemClick(Value value) {
         for (Value item : mItems) item.setSelected(value);
         notifyItemRangeChanged(0, getItemCount());
+        if (onChanged != null) onChanged.run();
         listener.setFilter(mKey, value);
     }
 
