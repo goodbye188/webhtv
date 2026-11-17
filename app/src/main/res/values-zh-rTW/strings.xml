@@ -572,6 +572,9 @@
     <string name="setting_csp_warmup_select_site">選擇 CSP 站點</string>
     <string name="setting_csp_warmup_no_site">沒有可用的 Jar CSP 站點</string>
     <string name="setting_csp_warmup_select_required">請至少選擇一個 CSP 站點</string>
+    <string name="setting_csp_warmup_search_hint">搜尋站源名稱或 api</string>
+    <string name="setting_csp_warmup_tab_all">全部</string>
+    <string name="setting_csp_warmup_tab_selected">已選</string>
     <string name="setting_playback_artwork_wall">播放介面劇照</string>
     <string name="setting_viewing_record_sync">觀影記錄同步</string>
     <string name="viewing_record_sync_entry_summary">%1$s · 遠端 %2$d/%3$d · Webhook %4$d/%5$d</string>

@@ -103,12 +103,11 @@ public final class CspWarmup {
 
     private static List<Site> pickCustomSites() {
         List<Site> result = new ArrayList<>();
-        Set<String> jars = new HashSet<>();
+        Set<String> keys = new HashSet<>();
         for (String key : Setting.getCspWarmupSites()) {
             Site site = VodConfig.get().getSite(key);
             if (!isWarmable(site)) continue;
-            String jar = jarKey(site);
-            if (!jars.add(jar)) continue;
+            if (!keys.add(warmKey(site))) continue;
             result.add(site);
         }
         return result;
@@ -127,7 +126,19 @@ public final class CspWarmup {
     public static boolean isWarmable(Site site) {
         if (site == null || site.isEmpty() || site.getType() != 3) return false;
         String api = site.getApi();
-        return !TextUtils.isEmpty(api) && api.startsWith("csp_") && !"csp_Builtin".equalsIgnoreCase(api) && !TextUtils.isEmpty(jarKey(site));
+        if (TextUtils.isEmpty(api)) return false;
+        // py 源：api 指向 .py 文件、没有 jar；预热实例化时 PyLoader 会加载脚本并执行 py 的
+        // init(extend)，py 源自己的后台预热线程（TLS/冷启动吸收）也随之在启动阶段跑起来。
+        if (api.contains(".py")) return true;
+        return api.startsWith("csp_") && !"csp_Builtin".equalsIgnoreCase(api) && !TextUtils.isEmpty(jarKey(site));
+    }
+
+    /** 预热去重键：csp 源一个 jar 一把锁，py 源每个 api 独立（jar 恒为空，用 api 区分）。 */
+    public static String warmKey(Site site) {
+        if (site == null) return "";
+        String api = site.getApi();
+        if (!TextUtils.isEmpty(api) && api.contains(".py")) return api.trim();
+        return jarKey(site);
     }
 
     public static String jarKey(Site site) {

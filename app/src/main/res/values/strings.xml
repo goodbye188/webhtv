@@ -606,6 +606,9 @@
     <string name="setting_csp_warmup_select_site">Select CSP sites</string>
     <string name="setting_csp_warmup_no_site">No jar CSP site available</string>
     <string name="setting_csp_warmup_select_required">Select at least one CSP site</string>
+    <string name="setting_csp_warmup_search_hint">Search site name or api</string>
+    <string name="setting_csp_warmup_tab_all">All</string>
+    <string name="setting_csp_warmup_tab_selected">Selected</string>
     <string name="setting_playback_artwork_wall">Playback stills</string>
     <string name="setting_viewing_record_sync">Viewing record sync</string>
     <string name="viewing_record_sync_entry_summary">%1$s · Remote %2$d/%3$d · Webhook %4$d/%5$d</string>
